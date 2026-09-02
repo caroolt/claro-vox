@@ -1,0 +1,107 @@
+version: "3.9"
+
+# Claro Vox — orquestração de containers para rodar o MVP completo
+# localmente com um único comando (docker compose up --build).
+#
+# Serviços:
+#   postgres      — armazenamento durável (Seção 4 da documentação técnica),
+#                   com a extensão pgvector para a base de conhecimento (RAG).
+#   redis         — cache de sessão ativa (contexto "quente", baixa latência).
+#   civ           — Camada de Identidade Vox (Node.js/Express): dona da
+#                   identidade do cliente, do contexto persistente e do
+#                   estado da sessão (RF001, RF004, RF010/011).
+#   orchestrator  — Orquestrador (Python/FastAPI): raciocínio conversacional,
+#                   classificação de intenção, RAG e decisão de transbordo
+#                   (RF002, RF007-009).
+#   frontend      — SPA React (simulador de cliente + painel do atendente),
+#                   servida via Nginx em produção.
+#
+# Em produção (Seção 4.6 da documentação técnica) cada serviço escalaria
+# horizontalmente atrás de um load balancer, com Postgres gerenciado
+# (ex.: RDS/Cloud SQL) e Redis gerenciado (ex.: ElastiCache); aqui a
+# topologia é simplificada para rodar em uma única máquina de demonstração.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: claro-vox-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clarovox
+      POSTGRES_PASSWORD: clarovox_dev_pw
+      POSTGRES_DB: claro_vox
+    ports:
+      - "5432:5432"
+    volumes:
+      - claro_vox_pgdata:/var/lib/postgresql/data
+      - ./civ/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clarovox -d claro_vox"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: claro-vox-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", ""]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  civ:
+    build:
+      context: ./civ
+    container_name: claro-vox-civ
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: 4001
+      DATABASE_URL: postgres://clarovox:clarovox_dev_pw@postgres:5432/claro_vox
+      REDIS_URL: redis://redis:6379
+      CPF_HASH_SECRET: troque-este-segredo-em-producao
+      ORCHESTRATOR_URL: http://orchestrator:4002
+    ports:
+      - "4001:4001"
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+    container_name: claro-vox-orchestrator
+    restart: unless-stopped
+    depends_on:
+      - civ
+    environment:
+      PORT: 4002
+      DATABASE_URL: postgres://clarovox:clarovox_dev_pw@postgres:5432/claro_vox
+      CIV_URL: http://civ:4001
+      # Opcional — ver orchestrator/.env.example
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "4002:4002"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_CIV_URL: http://localhost:4001
+        VITE_ORCH_URL: http://localhost:4002
+    container_name: claro-vox-frontend
+    restart: unless-stopped
+    depends_on:
+      - civ
+      - orchestrator
+    ports:
+      - "5173:80"
+
+volumes:
+  claro_vox_pgdata:
