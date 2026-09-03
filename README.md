@@ -39,7 +39,8 @@ para a gravação do vídeo de demonstração da Sprint 3.
   sessões ativas, métricas, base de conhecimento), atualizado em tempo
   real via WebSocket.
 
-## Simplificações assumidas no MVP
+## Simplificações assumidas no MVP (documentadas)
+
 Para rodar 100% localmente e sem custos de API neste sprint, duas peças da
 arquitetura de produção foram substituídas por versões locais equivalentes,
 com o mesmo contrato de dados:
@@ -47,16 +48,19 @@ com o mesmo contrato de dados:
 1. **Embeddings**: em vez de um provedor de embeddings pago, usamos um
    hashing trick (FNV-1a, 64 dimensões, normalização L2) implementado de
    forma **idêntica** em TypeScript (`civ/src/embedding.ts`) e Python
-   (`orchestrator/embedding.py`), validado bit-a-bit nos testes. O RAG usa
+   (`orchestrator/embedding.py`) — validado bit-a-bit nos testes. O RAG usa
    um re-ranqueamento léxico sobre os candidatos retornados pela busca
    vetorial (`orchestrator/rag.py`) para compensar a menor precisão
    semântica de um embedding tão simples.
 2. **LLM**: o Orquestrador tenta usar o Claude Haiku 4.5 de verdade
-   (`orchestrator/llm.py`) se `ANTHROPIC_API_KEY` estiver definida, sem a
+   (`orchestrator/llm.py`) se `ANTHROPIC_API_KEY` estiver definida; sem a
    chave, cai automaticamente em um motor de classificação por regras +
    respostas por template (`orchestrator/nlu.py`) que cobre os mesmos
    cenários documentados na Seção 5.7.
 
+Ambas as trocas são citadas nos comentários do código-fonte e devem ser
+mencionadas no vídeo (ver roteiro abaixo) — é exatamente o tipo de decisão
+de engenharia que se espera justificar em uma arguição.
 
 ## Como rodar localmente
 
@@ -118,6 +122,41 @@ Abra http://localhost:5173.
 
 Use esse CPF para demonstrar o **reconhecimento cross-canal (RF004)** sem
 precisar refazer o Cold Start.
+
+## Roteiro sugerido para o vídeo (6–8 minutos)
+
+Este roteiro é uma sugestão para a equipe gravar a demonstração — **não é
+um pitch**: a ideia é mostrar o sistema funcionando e explicar as
+tecnologias/arquitetura ao longo da demonstração, com todos os integrantes
+aparecendo com câmera aberta.
+
+1. **Abertura (30s)** — todos os integrantes se apresentam rapidamente; um
+   deles compartilha a tela.
+2. **Arquitetura em 60s** — mostrar o diagrama (documento de arquitetura) e
+   explicar em uma frase cada camada: Frontend, Orquestrador (Python/
+   FastAPI), CIV (Node/Express), Postgres+pgvector, Redis, WebSocket.
+3. **Cold Start (RF010/011) — ~90s** — na aba "Simulador de Cliente",
+   escolher o canal WhatsApp, clicar em "Iniciar conversa" e responder às
+   perguntas (já é cliente? nome? CPF/telefone?) até a sessão ficar ATIVA.
+4. **Consulta com RAG (venda/portfólio) — ~45s** — perguntar sobre planos
+   (ex.: "quero um plano com bastante GB de internet") e mostrar que a
+   resposta vem da base de conhecimento armazenada no Postgres/pgvector.
+5. **Reconhecimento cross-canal (RF004) — ~60s** — trocar para o canal
+   "Central de Voz", informar o mesmo CPF e mostrar que o Vox reconhece o
+   cliente e recupera o contexto anterior sem repetir perguntas.
+6. **Transbordo com briefing (RF007-009) — ~90s** — simular uma cobrança
+   contestada ("essa cobrança na minha fatura está errada, não reconheço
+   esse valor") seguida de uma mensagem de frustração; mostrar o aviso de
+   transbordo acionado.
+7. **Painel do Atendente / Vox Briefing — ~60s** — trocar para a aba do
+   painel, mostrar a fila de transbordo atualizando em tempo real via
+   WebSocket, abrir o briefing (resumo da jornada, tom emocional, sugestão
+   de resolução), clicar em "Assumir" e depois "Encerrar".
+8. **LGPD (~20s)** — no simulador, clicar em "Excluir meus dados" e
+   explicar que isso implementa o art. 18 da LGPD (direito de exclusão).
+9. **Fechamento (~15s)** — mencionar as simplificações assumidas no MVP
+   (embeddings locais determinísticos + fallback de LLM por regras) e por
+   que essas escolhas foram feitas para esta entrega.
 
 ## Estrutura do repositório
 

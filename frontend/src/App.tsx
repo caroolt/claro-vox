@@ -22,10 +22,11 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
-      <header className="bg-claro-dark text-white px-4 py-3 flex items-center justify-between">
+      <header className="bg-claro-black text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-claro-red font-bold text-xl">claro</span>
-          <span className="text-gray-300 text-sm">| Vox — Camada de Identidade Conversacional</span>
+          <span className="text-claro-red font-bold text-xl">Claro</span>
+          <span className="font-bold text-xl">Vox</span>
+          <span className="text-gray-400 text-sm hidden sm:inline">| Camada de Identidade Conversacional</span>
         </div>
         <div className="flex items-center gap-4">
           <StatusDot ok={status.civ} label="CIV" />
@@ -65,7 +66,7 @@ function TabButton({ ativo, onClick, children }: { ativo: boolean; onClick: () =
 function StatusDot({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span className="flex items-center gap-1.5 text-xs text-gray-300">
-      <span className={`w-2 h-2 rounded-full ${ok ? "bg-green-400" : "bg-red-500"}`} />
+      <span className={`w-2 h-2 rounded-full ${ok ? "bg-status-good" : "bg-status-critical"}`} />
       {label}
     </span>
   );

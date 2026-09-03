@@ -58,4 +58,7 @@ export interface Metrics {
   total_mensagens: number;
   disponibilidade_slo_pct: number;
   latencia_p95_alvo_ms: number;
+  sessoes_por_canal: Record<string, number>;
+  total_sessoes: number;
+  total_transbordos: number;
 }
