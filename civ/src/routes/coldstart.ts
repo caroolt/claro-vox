@@ -82,11 +82,13 @@ coldstartRouter.post("/answer", h(async (req, res) => {
     // depois de um tempo), reconhece a conta existente em vez de duplicar.
     let clienteId: string;
     let nomeFinal = draft.nome!;
+    let clienteReconhecido = false;
     if (cpfHash) {
       const existente = await pool.query("SELECT id, nome FROM cliente WHERE cpf_hash = $1", [cpfHash]);
       if (existente.rows.length) {
         clienteId = existente.rows[0].id;
         nomeFinal = existente.rows[0].nome;
+        clienteReconhecido = true;
       } else {
         const criado = await pool.query(
           `INSERT INTO cliente (cpf_hash, telefone, nome, tipo_cliente, consentimento_ts, consentimento_versao)
@@ -113,7 +115,15 @@ coldstartRouter.post("/answer", h(async (req, res) => {
     );
     await cacheSessionContext(sessao_id, contextoRes.rows[0]);
 
-    const boasVindas = `Encontrei sua conta, ${draft.nome}. Como posso te ajudar hoje?`;
+    // A mensagem de boas-vindas reflete o que de fato aconteceu no
+    // cadastro (RF011): reconhecimento de conta existente, primeiro
+    // cadastro como cliente ativo, ou cadastro na base de prospecção —
+    // "encontrei sua conta" só faz sentido no primeiro caso.
+    const boasVindas = clienteReconhecido
+      ? `Encontrei sua conta, ${draft.nome}. Como posso te ajudar hoje?`
+      : draft.jaCliente
+        ? `Prazer, ${draft.nome}! Vou guardar seus dados para os próximos contatos. Como posso te ajudar hoje?`
+        : `Cadastro criado, ${draft.nome}! Como posso te ajudar hoje?`;
     await pool.query(`INSERT INTO mensagem (sessao_id, canal_id, remetente, conteudo) VALUES ($1, $2, 'vox', $3)`, [sessao_id, canalId, boasVindas]);
     drafts.delete(sessao_id);
     await audit("civ", "coldstart.completo", sessao_id);

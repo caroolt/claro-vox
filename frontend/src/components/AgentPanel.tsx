@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { civ } from "../api";
-import type { Briefing, KnowledgeItem, Metrics, SessaoResumo } from "../types";
-import { useBriefingSocket } from "../useBriefingSocket";
+import type { Briefing, KnowledgeItem, Mensagem, Metrics, SessaoResumo } from "../types";
+import { useBriefingSocket, type WsEvent } from "../useBriefingSocket";
 
 const ESTADO_COR: Record<string, string> = {
   COLD_START: "bg-blue-100 text-blue-700",
@@ -24,6 +24,7 @@ export function AgentPanel() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [kb, setKb] = useState<KnowledgeItem[]>([]);
   const [briefingAberto, setBriefingAberto] = useState<Briefing | null>(null);
+  const [chatSessao, setChatSessao] = useState<{ id: string; clienteNome: string | null; canal: string } | null>(null);
   const { ultimoEvento, conectado } = useBriefingSocket();
 
   async function carregarTudo() {
@@ -44,15 +45,23 @@ export function AgentPanel() {
     if (ultimoEvento) carregarTudo();
   }, [ultimoEvento]);
 
-  async function assumir(id: string) {
-    await civ.handoffAssumir(id, "atendente-demo");
-    await carregarTudo();
-  }
-
   async function encerrar(id: string) {
     await civ.handoffEncerrar(id);
     setBriefingAberto(null);
     await carregarTudo();
+  }
+
+  function canalDaSessao(sessaoId: string, fallback: string): string {
+    return sessoes.find((s) => s.id === sessaoId)?.canal || fallback.split(",")[0]?.trim() || "whatsapp";
+  }
+
+  async function responder(b: Briefing) {
+    if (!b.atendente_id) {
+      await civ.handoffAssumir(b.id, "atendente-demo");
+      await carregarTudo();
+    }
+    setBriefingAberto(null);
+    setChatSessao({ id: b.sessao_id, clienteNome: b.cliente_nome, canal: canalDaSessao(b.sessao_id, b.canais_utilizados) });
   }
 
   const pendentes = fila.filter((b) => !b.encerrado_em);
@@ -89,19 +98,18 @@ export function AgentPanel() {
                 <p className="text-xs text-gray-500 mt-1 line-clamp-2">{b.motivo_transbordo}</p>
                 <div className="flex items-center justify-between mt-2">
                   <span className={`text-[11px] px-2 py-0.5 rounded-full ${ESTADO_COR[b.sessao_estado] || ""}`}>{b.sessao_estado}</span>
-                  {!b.atendente_id ? (
+                  <div className="flex items-center gap-1.5">
+                    {b.atendente_id && <span className="text-[11px] text-gray-400">com {b.atendente_id}</span>}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        assumir(b.id);
+                        responder(b);
                       }}
                       className="text-xs bg-claro-red text-white px-2 py-1 rounded"
                     >
-                      Assumir
+                      {b.atendente_id ? "Responder" : "Assumir e responder"}
                     </button>
-                  ) : (
-                    <span className="text-[11px] text-gray-400">com {b.atendente_id}</span>
-                  )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -117,7 +125,17 @@ export function AgentPanel() {
                   <span className="text-sm font-medium text-gray-800">{s.cliente_nome || "—"}</span>
                   <span className="text-xs text-gray-400 ml-2">via {s.canal || "?"}</span>
                 </div>
-                <span className={`text-[11px] px-2 py-0.5 rounded-full ${ESTADO_COR[s.estado] || ""}`}>{s.estado}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full ${ESTADO_COR[s.estado] || ""}`}>{s.estado}</span>
+                  {s.estado === "EM_ATENDIMENTO_HUMANO" && (
+                    <button
+                      onClick={() => setChatSessao({ id: s.id, clienteNome: s.cliente_nome, canal: s.canal || "whatsapp" })}
+                      className="text-[11px] bg-claro-red text-white px-2 py-0.5 rounded"
+                    >
+                      Abrir chat
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
             {sessoes.length === 0 && <p className="text-sm text-gray-400">Nenhuma sessão ativa — inicie uma conversa na aba "Simulador".</p>}
@@ -150,11 +168,9 @@ export function AgentPanel() {
               <Row label="Sugestão de resolução" value={briefingAberto.sugestao_resolucao} />
             </dl>
             <div className="flex justify-end gap-2 mt-4">
-              {!briefingAberto.atendente_id && (
-                <button onClick={() => assumir(briefingAberto.id)} className="text-sm bg-claro-red text-white px-3 py-1.5 rounded">
-                  Assumir atendimento
-                </button>
-              )}
+              <button onClick={() => responder(briefingAberto)} className="text-sm bg-claro-red text-white px-3 py-1.5 rounded">
+                {briefingAberto.atendente_id ? "Responder" : "Assumir e responder"}
+              </button>
               <button onClick={() => encerrar(briefingAberto.id)} className="text-sm bg-gray-700 text-white px-3 py-1.5 rounded">
                 Encerrar sessão
               </button>
@@ -165,6 +181,125 @@ export function AgentPanel() {
           </div>
         </div>
       )}
+
+      {chatSessao && (
+        <SessionChatPanel
+          sessaoId={chatSessao.id}
+          clienteNome={chatSessao.clienteNome}
+          canal={chatSessao.canal}
+          ultimoEvento={ultimoEvento}
+          onClose={() => setChatSessao(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SessionChatPanel({
+  sessaoId,
+  clienteNome,
+  canal,
+  ultimoEvento,
+  onClose,
+}: {
+  sessaoId: string;
+  clienteNome: string | null;
+  canal: string;
+  ultimoEvento: WsEvent | null;
+  onClose: () => void;
+}) {
+  const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+  const [input, setInput] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const fimRef = useRef<HTMLDivElement>(null);
+
+  async function carregar() {
+    const msgs = await civ.sessionMessages(sessaoId);
+    setMensagens(msgs);
+  }
+
+  useEffect(() => {
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessaoId]);
+
+  useEffect(() => {
+    const payload = ultimoEvento?.payload as { sessao_id?: string } | undefined;
+    if (ultimoEvento?.type === "message.created" && payload?.sessao_id === sessaoId) {
+      carregar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ultimoEvento]);
+
+  useEffect(() => {
+    fimRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [mensagens]);
+
+  async function enviar() {
+    if (!input.trim() || enviando) return;
+    const texto = input.trim();
+    setInput("");
+    setEnviando(true);
+    try {
+      await civ.enviarMensagem(sessaoId, "atendente", canal, texto);
+      await carregar();
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-lg mx-4 h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div>
+            <h3 className="font-semibold text-gray-800">Chat com {clienteNome || "cliente"}</h3>
+            <p className="text-xs text-gray-400">
+              canal: {canal} · suas mensagens aparecem para o cliente como respostas do Vox
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-gray-50">
+          {mensagens.map((m) => (
+            <div key={m.id} className={`flex ${m.remetente === "cliente" ? "justify-start" : "justify-end"}`}>
+              <div
+                className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow-sm ${m.remetente === "cliente"
+                  ? "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"
+                  : "bg-claro-red text-white rounded-br-sm"
+                  }`}
+              >
+                <p className="whitespace-pre-wrap">{m.conteudo}</p>
+                <p className={`mt-0.5 text-[10px] ${m.remetente === "cliente" ? "text-gray-400" : "text-red-100"}`}>
+                  {m.remetente === "cliente" ? "cliente" : m.remetente === "atendente" ? "você (atendente)" : "vox (IA)"}
+                </p>
+              </div>
+            </div>
+          ))}
+          <div ref={fimRef} />
+        </div>
+
+        <div className="border-t border-gray-200 p-3 flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && enviar()}
+            placeholder="Responder como atendente…"
+            disabled={enviando}
+            className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-claro-red"
+          />
+          <button
+            onClick={enviar}
+            disabled={enviando || !input.trim()}
+            className="bg-claro-red text-white px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50"
+          >
+            Enviar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

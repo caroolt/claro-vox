@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { civ, orchestrator } from "../api";
 import type { Canal } from "../types";
+import { useBriefingSocket } from "../useBriefingSocket";
 
 interface Bubble {
   id: string;
@@ -31,7 +32,9 @@ export function ChatSimulator() {
   const [carregando, setCarregando] = useState(false);
   const [mostrarTrocaCanal, setMostrarTrocaCanal] = useState(false);
   const [cpfTroca, setCpfTroca] = useState("");
+  const [atendimentoHumano, setAtendimentoHumano] = useState(false);
   const fimRef = useRef<HTMLDivElement>(null);
+  const { ultimoEvento } = useBriefingSocket();
 
   useEffect(() => {
     fimRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -40,6 +43,26 @@ export function ChatSimulator() {
   function add(de: Bubble["de"], texto: string, meta?: string) {
     setBubbles((b) => [...b, { id: uid(), de, texto, meta }]);
   }
+
+  // Ouve o WebSocket da CIV para receber, em tempo real, as mensagens que o
+  // atendente humano digitar no painel do atendente (Vox Briefing) — elas
+  // chegam aqui como remetente "atendente" e são mostradas como se fossem
+  // uma resposta comum do Vox, sem o cliente perceber a troca (handoff sem
+  // fricção, RF004/RF009).
+  useEffect(() => {
+    if (!ultimoEvento || !sessaoId) return;
+    const payload = ultimoEvento.payload as { sessao_id?: string; remetente?: string; conteudo?: string } | undefined;
+    if (payload?.sessao_id !== sessaoId) return;
+
+    if (ultimoEvento.type === "message.created" && payload.remetente === "atendente" && payload.conteudo) {
+      add("vox", payload.conteudo);
+    } else if (ultimoEvento.type === "handoff.assumed") {
+      setAtendimentoHumano(true);
+    } else if (ultimoEvento.type === "handoff.closed") {
+      add("sistema", "Atendimento encerrado pelo atendente.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ultimoEvento]);
 
   async function iniciarConversa() {
     setCarregando(true);
@@ -72,6 +95,11 @@ export function ChatSimulator() {
         } else {
           add("vox", r.proxima_pergunta);
         }
+      } else if (fase === "ativa" && sessaoId && atendimentoHumano) {
+        // Um atendente humano já assumiu esta sessão: a mensagem só é
+        // registrada, sem passar pelo Orquestrador/IA — quem responde a
+        // partir daqui é o atendente, pelo chat do painel.
+        await civ.enviarMensagem(sessaoId, "cliente", canal, texto);
       } else if (fase === "ativa" && sessaoId) {
         const r = await orchestrator.message(sessaoId, canal, texto);
         const meta = `intenção: ${r.categoria} · tom: ${r.tom_emocional}${r.fonte_classificacao === "llm" ? " · classificado pelo Claude" : ""}`;
@@ -142,6 +170,7 @@ export function ChatSimulator() {
     setClienteNome(null);
     setClienteId(null);
     setMostrarTrocaCanal(false);
+    setAtendimentoHumano(false);
   }
 
   return (

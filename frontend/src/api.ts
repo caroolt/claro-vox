@@ -54,6 +54,14 @@ export const civ = {
   knowledge: () => req<KnowledgeItem[]>(`${CIV_URL}/v1/knowledge`),
   metrics: () => req<Metrics>(`${CIV_URL}/v1/metrics`),
   excluirCliente: (id: string) => req<any>(`${CIV_URL}/v1/clientes/${id}`, { method: "DELETE" }),
+  // Grava uma mensagem diretamente na sessão — usado pelo atendente humano
+  // (remetente "atendente") no chat do painel, e pelo cliente quando a
+  // sessão já está com atendimento humano (sem passar pelo Orquestrador/IA).
+  enviarMensagem: (sessao_id: string, remetente: "atendente" | "cliente", canal: string, conteudo: string) =>
+    req<{ mensagem_id: string; timestamp: string }>(`${CIV_URL}/v1/sessions/${sessao_id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ remetente, canal, conteudo }),
+    }),
 };
 
 export function wsBriefingUrl(): string {

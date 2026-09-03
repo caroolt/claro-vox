@@ -206,6 +206,12 @@ async def processar_mensagem(body: MensagemIn):
         resposta_texto = _resposta_template(categoria, tom, trechos, nome_cliente)
         fonte_classificacao = "regras"
 
+    # Sempre que o transbordo é acionado, o Vox avisa o cliente antes de
+    # transferir — mensagem fixa, para deixar claro que a partir dali um
+    # atendente humano assume a conversa (RF007-009).
+    if requer_transbordo:
+        resposta_texto = "Não consigo te ajudar com isso. Estou te transferindo para um atendente!"
+
     # 3) registra a resposta do Vox
     msg_vox = await _civ_post(
         f"/v1/sessions/{sessao_id}/messages",

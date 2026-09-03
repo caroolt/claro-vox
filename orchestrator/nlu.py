@@ -50,13 +50,36 @@ PALAVRAS_FRUSTRACAO = [
     "absurdo", "ridiculo", "pessimo", "horrivel", "cansado disso", "cansada disso",
     "ja liguei", "terceira vez", "nunca resolve", "nao aguento", "revoltante",
     "indignad", "furios", "irritad", "estou p da vida", "que descaso",
+    # xingamentos e expressões vulgares de raiva — comuns num cliente irritado
+    # de verdade e que precisam ser reconhecidos como frustração, não ficarem
+    # de fora só porque não são "educados"
+    "porra", "caralho", "merda", "desgraca", "droga", "cacete", "bosta",
+    "inferno", "fdp", "foda", "fuder", "se fuder", "se foder", "puto", "puta",
+    "vsf", "pqp", "que saco", "saco cheio", "encheu o saco", "detesto",
+    "odeio", "que raiva", "estou puto", "estou furiosa", "que porcaria",
+    "lixo de", "incompetente", "inutil", "vergonha",
+    "toma no cu", "tomar no cu", "va se catar", "va a merda", "vai a merda",
+    "se ferra", "vai se ferrar", "seu lixo", "seu idiota", "otario",
+    "arrombado", "desgracado", "cambada de", "raça de",
 ]
 
 PALAVRAS_URGENCIA = ["urgente", "agora mesmo", "hoje mesmo", "imediatamente"]
 
 
-def detectar_tom_emocional(texto_norm: str) -> Optional[str]:
+def _gritando(texto_original: str) -> bool:
+    """Detecta 'grito' — mensagem digitada em maiúsculas, sinal comum de
+    raiva no chat que se perde ao normalizar o texto para minúsculas."""
+    letras = [c for c in texto_original if c.isalpha()]
+    if len(letras) < 5:
+        return False
+    maiusculas = sum(1 for c in letras if c.isupper())
+    return (maiusculas / len(letras)) > 0.7
+
+
+def detectar_tom_emocional(texto_norm: str, texto_original: str = "") -> Optional[str]:
     if any(p in texto_norm for p in PALAVRAS_FRUSTRACAO):
+        return "frustracao"
+    if texto_original and _gritando(texto_original):
         return "frustracao"
     if any(p in texto_norm for p in PALAVRAS_URGENCIA):
         return "urgencia"
@@ -74,7 +97,7 @@ def classificar(texto: str, categoria_anterior: Optional[str] = None) -> Intenca
     continua sendo tratada como o mesmo caso, e não uma dúvida genérica.
     """
     texto_norm = _norm(texto)
-    tom = detectar_tom_emocional(texto_norm)
+    tom = detectar_tom_emocional(texto_norm, texto)
 
     categoria_detectada: Optional[str] = None
     confianca = 0.4
@@ -103,17 +126,24 @@ def classificar(texto: str, categoria_anterior: Optional[str] = None) -> Intenca
 
     tentativas_anteriores_falharam = continuidade or (categoria_anterior == categoria and categoria_anterior is not None)
 
-    # Regra de negócio (Seção 5.6/5.7): cobrança contestada vai para
-    # transbordo se a explicação automática não resolveu (frustração
-    # detectada OU já é a 2ª mensagem sobre o mesmo caso na sessão) —
-    # simula o "Cenário 3" documentado.
+    # Regra de negócio (Seção 5.6/5.7): cliente frustrado (xingamento,
+    # grito, expressão de raiva) vai direto para transbordo — não espera
+    # uma "segunda tentativa fracassada", pois um cliente já hostil na
+    # primeira mensagem não deve ficar preso a respostas automáticas.
+    # Cobrança contestada some transborda mesmo sem frustração explícita
+    # quando a mesma dúvida se repete (explicação automática não resolveu)
+    # — simula o "Cenário 3" documentado.
     requer_transbordo = False
     motivo = None
-    if categoria == "atendimento/cobranca_contestada" and (tom == "frustracao" or tentativas_anteriores_falharam):
+    if tom == "frustracao":
         requer_transbordo = True
-        motivo = "cobrança contestada não resolvida automaticamente + tom emocional negativo"
-    elif tom == "frustracao" and tentativas_anteriores_falharam:
+        motivo = (
+            "cobrança contestada não resolvida automaticamente + tom emocional negativo"
+            if categoria == "atendimento/cobranca_contestada"
+            else "cliente demonstrou frustração/tom hostil na mensagem"
+        )
+    elif categoria == "atendimento/cobranca_contestada" and tentativas_anteriores_falharam:
         requer_transbordo = True
-        motivo = "cliente frustrado após tentativa automática sem sucesso"
+        motivo = "cobrança contestada não resolvida automaticamente"
 
     return Intencao(categoria, confianca, tom, requer_transbordo, motivo)

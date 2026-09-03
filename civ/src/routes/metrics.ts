@@ -10,7 +10,17 @@ export const metricsRouter = Router();
 metricsRouter.get("/", h(async (_req, res) => {
   const [sessoes, transbordo, tomEmocional, mensagens] = await Promise.all([
     pool.query(`SELECT estado, COUNT(*) FROM sessao GROUP BY estado`),
-    pool.query(`SELECT COUNT(*) FILTER (WHERE estado IN ('TRANSBORDO_PENDENTE','EM_ATENDIMENTO_HUMANO')) AS transbordos, COUNT(*) AS total FROM sessao`),
+    // A taxa de transbordo mede a fração de sessões que EM ALGUM MOMENTO
+    // precisaram de um atendente humano (existe um registro em `briefing`
+    // para a sessão) — não apenas as que estão com esse estado agora. Usar
+    // o estado atual da sessão faz a taxa "zerar" sempre que o atendente
+    // encerra um atendimento (a sessão volta para ENCERRADA), escondendo
+    // transbordos que já aconteceram e foram resolvidos.
+    pool.query(`
+      SELECT
+        (SELECT COUNT(DISTINCT sessao_id) FROM briefing) AS transbordos,
+        (SELECT COUNT(*) FROM sessao) AS total
+    `),
     pool.query(`SELECT tom_emocional, COUNT(*) FROM intencao WHERE tom_emocional IS NOT NULL GROUP BY tom_emocional`),
     pool.query(`SELECT COUNT(*) AS total_mensagens FROM mensagem`),
   ]);
