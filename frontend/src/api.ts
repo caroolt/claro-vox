@@ -6,6 +6,7 @@ import type {
   Mensagem,
   Metrics,
   SessaoResumo,
+  Suggestions,
   Transcript,
 } from "./types";
 
@@ -57,6 +58,8 @@ export const civ = {
   sessionContext: (id: string) => req<any>(`${CIV_URL}/v1/sessions/${id}/context`),
   // Transcrição anonimizada de uma sessão — base do PDF de conversa.
   sessionTranscript: (id: string) => req<Transcript>(`${CIV_URL}/v1/sessions/${id}/transcript`),
+  // Sugestões de resposta (base de conhecimento) para o atendente humano.
+  sessionSuggestions: (id: string) => req<Suggestions>(`${CIV_URL}/v1/sessions/${id}/suggestions`),
   handoffQueue: () => req<Briefing[]>(`${CIV_URL}/v1/handoff`),
   handoffDetail: (id: string) => req<Briefing>(`${CIV_URL}/v1/handoff/${id}`),
   handoffAssumir: (id: string, atendente_id: string) =>

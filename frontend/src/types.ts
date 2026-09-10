@@ -52,6 +52,12 @@ export interface KnowledgeItem {
   titulo: string;
   conteudo: string;
   categoria: string;
+  distancia?: number | null;
+}
+
+export interface Suggestions {
+  contexto: string | null;
+  itens: KnowledgeItem[];
 }
 
 export interface Metrics {

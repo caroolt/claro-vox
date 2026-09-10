@@ -5,6 +5,7 @@ import { cacheSessionContext } from "../redisClient";
 import { broadcast } from "../ws";
 import { h } from "../asyncHandler";
 import { scrubTexto } from "../anonimizar";
+import { embed } from "../embedding";
 
 export const sessionsRouter = Router();
 
@@ -129,6 +130,35 @@ sessionsRouter.get("/:id/transcript", h(async (req, res) => {
       timestamp: m.timestamp,
     })),
   });
+}));
+
+// GET /v1/sessions/:id/suggestions — artigos da base de conhecimento
+// sugeridos para o atendente humano, re-ranqueados pelas últimas falas do
+// cliente (mesma busca vetorial do RAG). Sem fala do cliente ainda, devolve
+// os artigos padrão.
+sessionsRouter.get("/:id/suggestions", h(async (req, res) => {
+  const { id } = req.params;
+  const msgs = await pool.query(
+    `SELECT conteudo FROM mensagem WHERE sessao_id = $1 AND remetente = 'cliente' ORDER BY timestamp DESC LIMIT 3`,
+    [id]
+  );
+  const contexto = msgs.rows.map((r) => r.conteudo).reverse().join(" ").trim() || null;
+
+  const itens = contexto
+    ? (
+        await pool.query(
+          `SELECT id, titulo, conteudo, categoria, embedding <-> $1 AS distancia
+           FROM knowledge_base ORDER BY embedding <-> $1 LIMIT 4`,
+          [`[${embed(contexto).join(",")}]`]
+        )
+      ).rows
+    : (
+        await pool.query(
+          `SELECT id, titulo, conteudo, categoria, NULL AS distancia FROM knowledge_base ORDER BY titulo LIMIT 4`
+        )
+      ).rows;
+
+  res.json({ contexto, itens });
 }));
 
 // POST /v1/sessions/:id/messages — usado pelo Orquestrador para registrar
