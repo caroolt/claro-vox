@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { civ, orchestrator } from "../api";
+import logoClaroVox from "../assets/claro-vox-logo.png";
 import type { Canal } from "../types";
 import { useBriefingSocket } from "../useBriefingSocket";
 
@@ -232,7 +233,10 @@ export function ChatSimulator() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-gray-50">
         {bubbles.length === 0 && fase === "inicio" && (
           <div className="text-center text-gray-400 mt-16">
-            <p className="text-lg mb-2">Simulador de atendimento — Claro Vox</p>
+            <span className="mb-3 inline-flex rounded-xl bg-claro-black px-4 py-2.5">
+              <img src={logoClaroVox} alt="Claro Vox" className="h-8 w-auto" />
+            </span>
+            <p className="text-lg mb-2">Simulador de atendimento</p>
             <p className="text-sm mb-6">Escolha um canal acima e inicie a conversa para ver o Cold Start (RF010/RF011) em ação.</p>
             <button
               onClick={iniciarConversa}

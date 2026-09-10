@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { civ } from "../../api";
+import logoClaroVox from "../../assets/claro-vox-logo.png";
 import type { Briefing, KnowledgeItem, Metrics, SessaoResumo } from "../../types";
 import { useBriefingSocket } from "../../useBriefingSocket";
 import { FILTROS_VAZIOS, type FiltrosOperacao } from "./meta";
@@ -112,15 +113,10 @@ export function AgentPanel() {
       <div className="sticky top-0 z-20 border-b border-gray-200 bg-claro-gray-light px-4 pb-2 pt-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-claro-red text-base font-bold text-white shadow-sm">
-              V
+            <span className="inline-flex rounded-lg bg-claro-black px-2 py-1 shadow-sm">
+              <img src={logoClaroVox} alt="Claro Vox" className="h-5 w-auto" />
             </span>
-            <div>
-              <h2 className="text-lg font-bold leading-tight text-gray-900">
-                <span className="text-claro-red">Claro</span> Vox
-              </h2>
-              <p className="text-[11px] leading-tight text-gray-400">Painel do atendente — Vox Briefing</p>
-            </div>
+            <p className="text-[11px] leading-tight text-gray-400">Painel do atendente — Vox Briefing</p>
           </div>
           <div className="flex items-center gap-2">
             <button

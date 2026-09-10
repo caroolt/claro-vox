@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ChatSimulator } from "./components/ChatSimulator";
 import { AgentPanel } from "./components/agent-panel/AgentPanel";
 import { civ, orchestrator } from "./api";
+import logoClaroVox from "./assets/claro-vox-logo.png";
 
 type Aba = "cliente" | "atendente";
 
@@ -24,8 +25,7 @@ function App() {
     <div className="h-screen flex flex-col bg-gray-100">
       <header className="bg-claro-black text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-claro-red font-bold text-xl">Claro</span>
-          <span className="font-bold text-xl">Vox</span>
+          <img src={logoClaroVox} alt="Claro Vox" className="h-6 w-auto" />
           <span className="text-gray-400 text-sm hidden sm:inline">| Camada de Identidade Conversacional</span>
         </div>
         <div className="flex items-center gap-4">
