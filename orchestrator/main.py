@@ -210,7 +210,10 @@ async def processar_mensagem(body: MensagemIn):
     # transferir — mensagem fixa, para deixar claro que a partir dali um
     # atendente humano assume a conversa (RF007-009).
     if requer_transbordo:
-        resposta_texto = "Não consigo te ajudar com isso. Estou te transferindo para um atendente!"
+        resposta_texto = (
+            "Não consigo te ajudar com isso. Estou te transferindo para um atendente! "
+            "Antes disso, de 0 a 10, o quanto você recomendaria o atendimento do assistente virtual?"
+        )
 
     # 3) registra a resposta do Vox
     msg_vox = await _civ_post(

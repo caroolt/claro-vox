@@ -8,7 +8,7 @@ export const metricsRouter = Router();
 // documentação técnica). Em produção esses números vêm do Grafana; aqui são
 // calculados diretamente do Postgres para a demonstração do MVP.
 metricsRouter.get("/", h(async (_req, res) => {
-  const [sessoes, transbordo, tomEmocional, mensagens, porCanal] = await Promise.all([
+  const [sessoes, transbordo, tomEmocional, mensagens, porCanal, npsRows] = await Promise.all([
     pool.query(`SELECT estado, COUNT(*) FROM sessao GROUP BY estado`),
     // A taxa de transbordo mede a fração de sessões que EM ALGUM MOMENTO
     // precisaram de um atendente humano (existe um registro em `briefing`
@@ -30,6 +30,18 @@ metricsRouter.get("/", h(async (_req, res) => {
       FROM sessao s JOIN canal ca ON ca.id = s.canal_origem_id
       GROUP BY ca.nome
     `),
+    // NPS por alvo (IA × atendente humano): média geral das notas, total de
+    // respostas e o índice NPS clássico (% promotores 9-10 − % detratores 0-6).
+    pool.query(`
+      SELECT
+        alvo,
+        AVG(nota)::numeric(4,1)                                   AS media,
+        COUNT(*)                                                  AS respostas,
+        COUNT(*) FILTER (WHERE nota >= 9)                         AS promotores,
+        COUNT(*) FILTER (WHERE nota <= 6)                         AS detratores
+      FROM nps
+      GROUP BY alvo
+    `),
   ]);
 
   const porEstado: Record<string, number> = {};
@@ -45,6 +57,22 @@ metricsRouter.get("/", h(async (_req, res) => {
   const canais: Record<string, number> = {};
   porCanal.rows.forEach((r) => (canais[r.canal] = Number(r.total)));
 
+  const npsVazio = () => ({ media: 0, respostas: 0, indice: 0 });
+  const nps: Record<"ia" | "atendente", { media: number; respostas: number; indice: number }> = {
+    ia: npsVazio(),
+    atendente: npsVazio(),
+  };
+  npsRows.rows.forEach((r) => {
+    const respostas = Number(r.respostas);
+    const alvo = r.alvo as "ia" | "atendente";
+    if (alvo !== "ia" && alvo !== "atendente") return;
+    nps[alvo] = {
+      media: Number(r.media) || 0,
+      respostas,
+      indice: respostas > 0 ? Math.round(((Number(r.promotores) - Number(r.detratores)) / respostas) * 100) : 0,
+    };
+  });
+
   res.json({
     sessoes_por_estado: porEstado,
     taxa_transbordo_pct: taxaTransbordo,
@@ -55,5 +83,6 @@ metricsRouter.get("/", h(async (_req, res) => {
     sessoes_por_canal: canais,
     total_sessoes: total,
     total_transbordos: transbordos,
+    nps,
   });
 }));

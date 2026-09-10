@@ -89,6 +89,22 @@ CREATE TABLE IF NOT EXISTS handoff (
   encerrado_em  TIMESTAMPTZ
 );
 
+-- Pesquisa de NPS — coletada no cliente em dois momentos: (1) da IA, junto
+-- da mensagem de transbordo (antes do atendente humano assumir); (2) do
+-- atendente humano, quando ele encerra a sessão. Uma resposta por sessão e
+-- por alvo (UNIQUE) — reenviar atualiza a nota.
+CREATE TABLE IF NOT EXISTS nps (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sessao_id    UUID NOT NULL REFERENCES sessao(id) ON DELETE CASCADE,
+  alvo         TEXT NOT NULL CHECK (alvo IN ('ia','atendente')),
+  nota         SMALLINT NOT NULL CHECK (nota BETWEEN 0 AND 10),
+  comentario   TEXT,
+  briefing_id  UUID REFERENCES briefing(id) ON DELETE SET NULL,
+  atendente_id TEXT,
+  criado_em    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (sessao_id, alvo)
+);
+
 CREATE TABLE IF NOT EXISTS auditoria (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ator        TEXT NOT NULL,       -- serviço/usuário que acessou

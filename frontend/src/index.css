@@ -39,3 +39,11 @@ body {
 .vox-fade-in {
   animation: vox-fade-in 0.25s ease-out;
 }
+
+@keyframes vox-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.vox-slide-in {
+  animation: vox-slide-in 0.22s ease-out;
+}

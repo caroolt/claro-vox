@@ -132,6 +132,61 @@ export function StackedBar({
   );
 }
 
+// CompareBars — comparação lado a lado de poucas séries na mesma escala
+// (ex.: NPS médio da IA × dos atendentes). Barras horizontais sobrepostas,
+// escala fixa 0–max, com rótulo, valor e uma métrica secundária opcional.
+export interface CompareItem {
+  key: string;
+  label: string;
+  /** valor principal, plotado na barra (0–max) */
+  value: number;
+  color: string;
+  /** texto auxiliar à direita (ex.: "12 respostas · índice 25") */
+  sub?: string;
+  /** quando true, mostra a barra vazia com uma mensagem de "sem dados" */
+  vazio?: boolean;
+}
+
+export function CompareBars({
+  items,
+  max = 10,
+  emptyLabel = "Sem respostas ainda",
+}: {
+  items: CompareItem[];
+  max?: number;
+  emptyLabel?: string;
+}) {
+  return (
+    <div className="space-y-3">
+      {items.map((it) => {
+        const pct = it.vazio ? 0 : Math.max(0, Math.min(100, (it.value / max) * 100));
+        return (
+          <div key={it.key}>
+            <div className="mb-1 flex items-baseline justify-between text-xs">
+              <span className="font-medium text-gray-600">{it.label}</span>
+              {it.vazio ? (
+                <span className="text-gray-400">{emptyLabel}</span>
+              ) : (
+                <span className="text-gray-400">
+                  <span className="text-sm font-bold tabular-nums text-gray-800">{it.value.toFixed(1)}</span>
+                  <span className="text-gray-300"> / {max}</span>
+                  {it.sub && <span className="ml-2">{it.sub}</span>}
+                </span>
+              )}
+            </div>
+            <div className="h-3 w-full overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${pct}%`, backgroundColor: it.color }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Meter — proporção única contra uma meta (ex.: taxa de transbordo), com
 // marcador de meta interna. Preferido a um "donut de 2 fatias" (ver dataviz).
 export function Meter({

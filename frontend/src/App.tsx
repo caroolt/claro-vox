@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChatSimulator } from "./components/ChatSimulator";
-import { AgentPanel } from "./components/AgentPanel";
+import { AgentPanel } from "./components/agent-panel/AgentPanel";
 import { civ, orchestrator } from "./api";
 
 type Aba = "cliente" | "atendente";

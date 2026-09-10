@@ -5,9 +5,13 @@ import { useBriefingSocket } from "../useBriefingSocket";
 
 interface Bubble {
   id: string;
-  de: "cliente" | "vox" | "sistema";
+  de: "cliente" | "vox" | "sistema" | "atendente";
   texto: string;
   meta?: string;
+  // Quando presente, renderiza a pesquisa de NPS logo abaixo desta bolha:
+  // "ia" acompanha a mensagem de transbordo; "atendente" aparece quando o
+  // atendente humano encerra a sessão.
+  nps?: { alvo: "ia" | "atendente"; briefingId?: string | null };
 }
 
 const CANAIS: { valor: Canal; rotulo: string; icone: string }[] = [
@@ -40,26 +44,25 @@ export function ChatSimulator() {
     fimRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [bubbles]);
 
-  function add(de: Bubble["de"], texto: string, meta?: string) {
-    setBubbles((b) => [...b, { id: uid(), de, texto, meta }]);
+  function add(de: Bubble["de"], texto: string, meta?: string, nps?: Bubble["nps"]) {
+    setBubbles((b) => [...b, { id: uid(), de, texto, meta, nps }]);
   }
 
   // Ouve o WebSocket da CIV para receber, em tempo real, as mensagens que o
   // atendente humano digitar no painel do atendente (Vox Briefing) — elas
-  // chegam aqui como remetente "atendente" e são mostradas como se fossem
-  // uma resposta comum do Vox, sem o cliente perceber a troca (handoff sem
-  // fricção, RF004/RF009).
+  // chegam aqui como remetente "atendente" e são exibidas em um balão vermelho
+  // bem claro, para o cliente distinguir quando está falando com um humano.
   useEffect(() => {
     if (!ultimoEvento || !sessaoId) return;
     const payload = ultimoEvento.payload as { sessao_id?: string; remetente?: string; conteudo?: string } | undefined;
     if (payload?.sessao_id !== sessaoId) return;
 
     if (ultimoEvento.type === "message.created" && payload.remetente === "atendente" && payload.conteudo) {
-      add("vox", payload.conteudo);
+      add("atendente", payload.conteudo);
     } else if (ultimoEvento.type === "handoff.assumed") {
       setAtendimentoHumano(true);
     } else if (ultimoEvento.type === "handoff.closed") {
-      add("sistema", "Atendimento encerrado pelo atendente.");
+      add("sistema", "Atendimento encerrado pelo atendente.", undefined, { alvo: "atendente" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ultimoEvento]);
@@ -103,7 +106,7 @@ export function ChatSimulator() {
       } else if (fase === "ativa" && sessaoId) {
         const r = await orchestrator.message(sessaoId, canal, texto);
         const meta = `intenção: ${r.categoria} · tom: ${r.tom_emocional}${r.fonte_classificacao === "llm" ? " · classificado pelo Claude" : ""}`;
-        add("vox", r.resposta, meta);
+        add("vox", r.resposta, meta, r.transbordo ? { alvo: "ia", briefingId: r.briefing_id } : undefined);
         if (r.transbordo) {
           add("sistema", `🔁 Transbordo acionado — briefing #${String(r.briefing_id).slice(0, 8)} enviado ao painel do atendente (Vox Briefing).`);
         }
@@ -241,18 +244,27 @@ export function ChatSimulator() {
           </div>
         )}
         {bubbles.map((b) => (
-          <div key={b.id} className={`flex ${b.de === "cliente" ? "justify-end" : "justify-start"}`}>
-            {b.de === "sistema" ? (
-              <div className="mx-auto text-xs text-center text-gray-500 bg-gray-200 rounded-full px-3 py-1">{b.texto}</div>
-            ) : (
-              <div
-                className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                  b.de === "cliente" ? "bg-claro-red text-white rounded-br-sm" : "bg-white text-gray-800 rounded-bl-sm border border-gray-200"
-                }`}
-              >
-                <p className="whitespace-pre-wrap">{b.texto}</p>
-                {b.meta && <p className={`mt-1 text-[11px] ${b.de === "cliente" ? "text-red-100" : "text-gray-400"}`}>{b.meta}</p>}
-              </div>
+          <div key={b.id} className="space-y-3">
+            <div className={`flex ${b.de === "cliente" ? "justify-end" : "justify-start"}`}>
+              {b.de === "sistema" ? (
+                <div className="mx-auto text-xs text-center text-gray-500 bg-gray-200 rounded-full px-3 py-1">{b.texto}</div>
+              ) : (
+                <div
+                  className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                    b.de === "cliente"
+                      ? "bg-claro-red text-white rounded-br-sm"
+                      : b.de === "atendente"
+                      ? "bg-claro-red-light text-gray-800 rounded-bl-sm border border-claro-red/20"
+                      : "bg-white text-gray-800 rounded-bl-sm border border-gray-200"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{b.texto}</p>
+                  {b.meta && <p className={`mt-1 text-[11px] ${b.de === "cliente" ? "text-red-100" : "text-gray-400"}`}>{b.meta}</p>}
+                </div>
+              )}
+            </div>
+            {b.nps && sessaoId && (
+              <NpsInline sessaoId={sessaoId} alvo={b.nps.alvo} briefingId={b.nps.briefingId} />
             )}
           </div>
         ))}
@@ -277,6 +289,111 @@ export function ChatSimulator() {
             Enviar
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Pesquisa de NPS embutida no chat do cliente. Para o alvo "ia" a pergunta
+// já vem na própria mensagem de transbordo, então aqui só mostramos a escala;
+// para o alvo "atendente" incluímos a pergunta. Uma vez enviada (ou dispensada)
+// a pesquisa some, deixando só um agradecimento.
+function NpsInline({
+  sessaoId,
+  alvo,
+  briefingId,
+}: {
+  sessaoId: string;
+  alvo: "ia" | "atendente";
+  briefingId?: string | null;
+}) {
+  const [nota, setNota] = useState<number | null>(null);
+  const [comentario, setComentario] = useState("");
+  const [estado, setEstado] = useState<"aberta" | "enviando" | "enviada" | "dispensada">("aberta");
+
+  async function enviar() {
+    if (nota === null) return;
+    setEstado("enviando");
+    try {
+      await civ.nps({
+        sessao_id: sessaoId,
+        alvo,
+        nota,
+        comentario: comentario.trim() || undefined,
+        briefing_id: briefingId ?? undefined,
+      });
+      setEstado("enviada");
+    } catch {
+      setEstado("aberta");
+    }
+  }
+
+  if (estado === "enviada") {
+    return (
+      <div className="mx-auto rounded-full bg-green-50 px-3 py-1 text-center text-xs text-green-700">
+        ✓ Obrigado pela sua avaliação!
+      </div>
+    );
+  }
+  if (estado === "dispensada") {
+    return (
+      <div className="mx-auto rounded-full bg-gray-100 px-3 py-1 text-center text-xs text-gray-400">
+        Avaliação dispensada.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+      <p className="text-xs font-medium text-gray-700">
+        {alvo === "ia"
+          ? "Sua avaliação do assistente virtual:"
+          : "De 0 a 10, o quanto você recomendaria o atendimento do nosso atendente?"}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {Array.from({ length: 11 }, (_, i) => i).map((n) => (
+          <button
+            key={n}
+            onClick={() => setNota(n)}
+            className={`h-7 w-7 rounded-full text-xs font-medium transition ${
+              nota === n
+                ? "bg-claro-red text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+        <span>nada provável</span>
+        <span>muito provável</span>
+      </div>
+      {nota !== null && (
+        <>
+          <textarea
+            value={comentario}
+            onChange={(e) => setComentario(e.target.value)}
+            placeholder="Quer contar o porquê? (opcional)"
+            rows={2}
+            className="mt-2 w-full resize-none rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-claro-red focus:outline-none"
+          />
+          <div className="mt-2 flex items-center justify-end gap-3">
+            <button
+              onClick={() => setEstado("dispensada")}
+              className="text-[11px] text-gray-400 underline hover:text-gray-600"
+            >
+              Pular
+            </button>
+            <button
+              onClick={enviar}
+              disabled={estado === "enviando"}
+              className="rounded-full bg-claro-red px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+            >
+              {estado === "enviando" ? "Enviando…" : "Enviar avaliação"}
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

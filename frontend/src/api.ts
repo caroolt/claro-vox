@@ -1,4 +1,13 @@
-import type { Briefing, KnowledgeItem, Mensagem, Metrics, SessaoResumo } from "./types";
+import type {
+  Briefing,
+  ClienteDetalhe,
+  ClienteResumo,
+  KnowledgeItem,
+  Mensagem,
+  Metrics,
+  SessaoResumo,
+  Transcript,
+} from "./types";
 
 export const CIV_URL = import.meta.env.VITE_CIV_URL || "http://localhost:4001";
 export const ORCH_URL = import.meta.env.VITE_ORCH_URL || "http://localhost:4002";
@@ -46,6 +55,8 @@ export const civ = {
   sessions: (ativas = true) => req<SessaoResumo[]>(`${CIV_URL}/v1/sessions?ativas=${ativas}`),
   sessionMessages: (id: string) => req<Mensagem[]>(`${CIV_URL}/v1/sessions/${id}/messages`),
   sessionContext: (id: string) => req<any>(`${CIV_URL}/v1/sessions/${id}/context`),
+  // Transcrição anonimizada de uma sessão — base do PDF de conversa.
+  sessionTranscript: (id: string) => req<Transcript>(`${CIV_URL}/v1/sessions/${id}/transcript`),
   handoffQueue: () => req<Briefing[]>(`${CIV_URL}/v1/handoff`),
   handoffDetail: (id: string) => req<Briefing>(`${CIV_URL}/v1/handoff/${id}`),
   handoffAssumir: (id: string, atendente_id: string) =>
@@ -53,7 +64,33 @@ export const civ = {
   handoffEncerrar: (id: string) => req<any>(`${CIV_URL}/v1/handoff/${id}/encerrar`, { method: "POST" }),
   knowledge: () => req<KnowledgeItem[]>(`${CIV_URL}/v1/knowledge`),
   metrics: () => req<Metrics>(`${CIV_URL}/v1/metrics`),
+  // Busca de clientes para o painel do atendente — `q` = nome/telefone
+  // parcial, `cpf` = CPF completo (match exato por hash). Sem filtro,
+  // devolve os clientes mais recentes.
+  clientesBuscar: (params: { q?: string; cpf?: string; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.cpf) qs.set("cpf", params.cpf);
+    if (params.limit) qs.set("limit", String(params.limit));
+    const sufixo = qs.toString() ? `?${qs}` : "";
+    return req<ClienteResumo[]>(`${CIV_URL}/v1/clientes${sufixo}`);
+  },
+  clienteDetalhe: (id: string) => req<ClienteDetalhe>(`${CIV_URL}/v1/clientes/${id}`),
   excluirCliente: (id: string) => req<any>(`${CIV_URL}/v1/clientes/${id}`, { method: "DELETE" }),
+  // Registra a nota de NPS enviada pelo cliente no simulador — alvo "ia"
+  // (junto do transbordo) ou "atendente" (ao encerrar o atendimento humano).
+  nps: (payload: {
+    sessao_id: string;
+    alvo: "ia" | "atendente";
+    nota: number;
+    comentario?: string;
+    briefing_id?: string | null;
+    atendente_id?: string | null;
+  }) =>
+    req<{ ok: boolean; nps_id: string }>(`${CIV_URL}/v1/nps`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   // Grava uma mensagem diretamente na sessão — usado pelo atendente humano
   // (remetente "atendente") no chat do painel, e pelo cliente quando a
   // sessão já está com atendimento humano (sem passar pelo Orquestrador/IA).

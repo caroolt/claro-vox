@@ -34,10 +34,13 @@ handoffRouter.post("/", h(async (req, res) => {
 // GET /v1/handoff — fila de briefings (histórico + pendentes) para o Vox Briefing
 handoffRouter.get("/", h(async (req, res) => {
   const result = await pool.query(`
-    SELECT b.*, s.estado AS sessao_estado, cl.nome AS cliente_nome, h.atendente_id, h.assumido_em, h.encerrado_em
+    SELECT b.*, s.estado AS sessao_estado, s.canal_origem_id,
+           cl.id AS cliente_id, cl.nome AS cliente_nome,
+           ca.nome AS canal, h.atendente_id, h.assumido_em, h.encerrado_em
     FROM briefing b
     JOIN sessao s ON s.id = b.sessao_id
     LEFT JOIN cliente cl ON cl.id = s.cliente_id
+    LEFT JOIN canal ca ON ca.id = s.canal_origem_id
     LEFT JOIN handoff h ON h.briefing_id = b.id
     ORDER BY b.gerado_em DESC LIMIT 100
   `);

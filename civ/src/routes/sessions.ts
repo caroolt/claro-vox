@@ -4,6 +4,7 @@ import { getOrCreateCanal } from "../helpers";
 import { cacheSessionContext } from "../redisClient";
 import { broadcast } from "../ws";
 import { h } from "../asyncHandler";
+import { scrubTexto } from "../anonimizar";
 
 export const sessionsRouter = Router();
 
@@ -13,7 +14,7 @@ sessionsRouter.get("/", h(async (req, res) => {
   const where = somenteAtivas ? "WHERE s.estado NOT IN ('ENCERRADA')" : "";
   const result = await pool.query(`
     SELECT s.id, s.estado, s.criado_em, s.atualizado_em,
-           cl.nome AS cliente_nome, cl.tipo_cliente,
+           cl.id AS cliente_id, cl.nome AS cliente_nome, cl.tipo_cliente,
            ca.nome AS canal,
            ctx.ultima_intencao, ctx.jornada_status
     FROM sessao s
@@ -61,6 +62,73 @@ sessionsRouter.get("/:id/messages", h(async (req, res) => {
     [req.params.id]
   );
   res.json(result.rows);
+}));
+
+// GET /v1/sessions/:id/transcript — transcrição da conversa já anonimizada,
+// para exportar em PDF sem vazar dado pessoal do titular (ver anonimizar.ts).
+sessionsRouter.get("/:id/transcript", h(async (req, res) => {
+  const { id } = req.params;
+  const sessaoRes = await pool.query(
+    `SELECT s.id, s.estado, s.criado_em, s.atualizado_em,
+            cl.nome AS cliente_nome, cl.tipo_cliente, ca.nome AS canal
+     FROM sessao s
+     LEFT JOIN cliente cl ON cl.id = s.cliente_id
+     LEFT JOIN canal ca ON ca.id = s.canal_origem_id
+     WHERE s.id = $1`,
+    [id]
+  );
+  if (!sessaoRes.rows.length) return res.status(404).json({ erro: "sessão não encontrada" });
+  const s = sessaoRes.rows[0];
+  const nome = s.cliente_nome as string | null;
+
+  const [msgsRes, briefingRes, tomRes] = await Promise.all([
+    pool.query(
+      `SELECT m.remetente, m.conteudo, m.timestamp
+       FROM mensagem m WHERE m.sessao_id = $1 ORDER BY m.timestamp ASC`,
+      [id]
+    ),
+    pool.query(
+      `SELECT motivo_transbordo, tom_emocional, resumo_jornada, sugestao_resolucao, canais_utilizados
+       FROM briefing WHERE sessao_id = $1 ORDER BY gerado_em DESC LIMIT 1`,
+      [id]
+    ),
+    pool.query(
+      `SELECT i.tom_emocional, COUNT(*) AS total
+       FROM intencao i JOIN mensagem m ON m.id = i.mensagem_id
+       WHERE m.sessao_id = $1 AND i.tom_emocional IS NOT NULL
+       GROUP BY i.tom_emocional ORDER BY total DESC LIMIT 1`,
+      [id]
+    ),
+  ]);
+
+  const b = briefingRes.rows[0];
+  await audit("civ", "sessions.transcript.export", id);
+
+  res.json({
+    sessao: {
+      id: s.id,
+      estado: s.estado,
+      canal: s.canal,
+      criado_em: s.criado_em,
+      atualizado_em: s.atualizado_em,
+    },
+    cliente: { rotulo: "Cliente", tipo_cliente: s.tipo_cliente },
+    tom_predominante: tomRes.rows[0]?.tom_emocional || null,
+    briefing: b
+      ? {
+          motivo_transbordo: scrubTexto(b.motivo_transbordo, nome),
+          tom_emocional: b.tom_emocional,
+          resumo_jornada: scrubTexto(b.resumo_jornada, nome),
+          sugestao_resolucao: scrubTexto(b.sugestao_resolucao, nome),
+          canais_utilizados: b.canais_utilizados,
+        }
+      : null,
+    mensagens: msgsRes.rows.map((m) => ({
+      remetente: m.remetente,
+      conteudo: scrubTexto(m.conteudo, nome),
+      timestamp: m.timestamp,
+    })),
+  });
 }));
 
 // POST /v1/sessions/:id/messages — usado pelo Orquestrador para registrar

@@ -8,8 +8,9 @@ import { handoffRouter } from "./routes/handoff";
 import { knowledgeRouter } from "./routes/knowledge";
 import { metricsRouter } from "./routes/metrics";
 import { clientesRouter } from "./routes/clientes";
+import { npsRouter } from "./routes/nps";
 import { initWs } from "./ws";
-import { pool } from "./db";
+import { pool, ensureSchema } from "./db";
 
 const app = express();
 app.use(cors());
@@ -30,6 +31,7 @@ app.use("/v1/handoff", handoffRouter);
 app.use("/v1/knowledge", knowledgeRouter);
 app.use("/v1/metrics", metricsRouter);
 app.use("/v1/clientes", clientesRouter);
+app.use("/v1/nps", npsRouter);
 
 // Middleware de erro global — qualquer exceção das rotas (via asyncHandler)
 // vira uma resposta JSON 500 em vez de derrubar o processo.
@@ -42,6 +44,11 @@ const PORT = Number(process.env.PORT) || 4001;
 const server = http.createServer(app);
 initWs(server);
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`[civ] Camada de Identidade Vox ouvindo em http://localhost:${PORT}`);
+  try {
+    await ensureSchema();
+  } catch (e) {
+    console.error("[civ] falha ao garantir schema incremental:", (e as Error).message);
+  }
 });
