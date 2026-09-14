@@ -1,5 +1,33 @@
 export type Canal = "whatsapp" | "site" | "app" | "voz";
 
+export type Role = "admin" | "atendente";
+
+export interface Usuario {
+  id: string;
+  nome: string;
+  email: string;
+  role: Role;
+}
+
+export interface UsuarioAdmin extends Usuario {
+  ativo: boolean;
+  mfa_ativado: boolean;
+  criado_em: string;
+}
+
+export interface LoginIniciado {
+  etapa: "mfa" | "mfa_configuracao";
+  login_token: string;
+  otpauth_url?: string;
+  mfa_qr_data_url?: string;
+  mfa_secret?: string;
+}
+
+export interface LoginConcluido {
+  token: string;
+  usuario: Usuario;
+}
+
 export interface Cliente {
   id: string;
   nome: string;

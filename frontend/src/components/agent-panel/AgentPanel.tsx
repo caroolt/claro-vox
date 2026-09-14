@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { civ } from "../../api";
 import logoClaroVox from "../../assets/claro-vox-logo.png";
-import type { Briefing, KnowledgeItem, Metrics, SessaoResumo } from "../../types";
+import type { Briefing, KnowledgeItem, Metrics, SessaoResumo, Usuario } from "../../types";
 import { useBriefingSocket } from "../../useBriefingSocket";
 import { FILTROS_VAZIOS, type FiltrosOperacao } from "./meta";
 import { exportarBriefingZip } from "./exportar";
@@ -11,20 +11,33 @@ import { ClientesTab } from "./ClientesTab";
 import { ClienteDrawer } from "./ClienteDrawer";
 import { BriefingModal } from "./BriefingModal";
 import { SessionChatPanel } from "./SessionChatPanel";
+import { AtendentesTab } from "./AtendentesTab";
 
-type Aba = "geral" | "operacao" | "clientes" | "kb";
+type Aba = "geral" | "operacao" | "clientes" | "kb" | "atendentes";
 
-const ABAS: { id: Aba; rotulo: string }[] = [
-  { id: "geral", rotulo: "Visão geral" },
-  { id: "operacao", rotulo: "Operação" },
-  { id: "clientes", rotulo: "Clientes" },
-  { id: "kb", rotulo: "Conhecimento" },
-];
+const ABAS_POR_ROLE: Record<Usuario["role"], { id: Aba; rotulo: string }[]> = {
+  // Admin vê todas as abas do Vox Briefing + a gestão de atendentes.
+  admin: [
+    { id: "geral", rotulo: "Visão geral" },
+    { id: "operacao", rotulo: "Operação" },
+    { id: "clientes", rotulo: "Clientes" },
+    { id: "kb", rotulo: "Conhecimento" },
+    { id: "atendentes", rotulo: "Atendentes" },
+  ],
+  // Atendente vê só o que precisa para o dia a dia — sem métricas do
+  // negócio nem gestão de contas.
+  atendente: [
+    { id: "operacao", rotulo: "Operação" },
+    { id: "clientes", rotulo: "Clientes" },
+    { id: "kb", rotulo: "Conhecimento" },
+  ],
+};
 
 type ChatSessao = { id: string; clienteNome: string | null; canal: string };
 
-export function AgentPanel() {
-  const [aba, setAba] = useState<Aba>("geral");
+export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () => void }) {
+  const ABAS = ABAS_POR_ROLE[usuario.role];
+  const [aba, setAba] = useState<Aba>(ABAS[0].id);
   const [sessoes, setSessoes] = useState<SessaoResumo[]>([]);
   const [fila, setFila] = useState<Briefing[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -41,10 +54,12 @@ export function AgentPanel() {
   const { ultimoEvento, conectado } = useBriefingSocket();
 
   async function carregarTudo() {
+    // Métricas (Visão geral) são exclusivas do admin — atendente não tem
+    // permissão na CIV para essa rota, então nem chamamos para essa role.
     const [s, f, m, k] = await Promise.all([
       civ.sessions(true),
       civ.handoffQueue(),
-      civ.metrics(),
+      usuario.role === "admin" ? civ.metrics() : Promise.resolve(null),
       civ.knowledge(),
     ]);
     setSessoes(s);
@@ -76,7 +91,7 @@ export function AgentPanel() {
 
   async function responder(b: Briefing) {
     if (!b.atendente_id) {
-      await civ.handoffAssumir(b.id, "atendente-demo");
+      await civ.handoffAssumir(b.id);
       await carregarTudo();
     }
     setBriefingAberto(null);
@@ -119,6 +134,15 @@ export function AgentPanel() {
             <p className="text-[11px] leading-tight text-gray-400">Painel do atendente — Vox Briefing</p>
           </div>
           <div className="flex items-center gap-2">
+            <span className="hidden text-[11px] text-gray-400 sm:inline">
+              {usuario.nome} · <span className="uppercase">{usuario.role}</span>
+            </span>
+            <button
+              onClick={onSair}
+              className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-claro-red hover:text-claro-red"
+            >
+              Sair
+            </button>
             <button
               onClick={exportarCsv}
               disabled={exportandoCsv}
@@ -211,6 +235,8 @@ export function AgentPanel() {
             </div>
           </section>
         )}
+
+        {aba === "atendentes" && <AtendentesTab usuarioLogadoId={usuario.id} />}
       </div>
 
       {briefingAberto && (

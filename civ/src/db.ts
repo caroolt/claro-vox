@@ -22,6 +22,22 @@ export async function ensureSchema() {
       UNIQUE (sessao_id, alvo)
     );
   `);
+  // Contas do Painel do Atendente (Vox Briefing) — autenticação com senha +
+  // MFA (TOTP) e RBAC (admin / atendente). O simulador de cliente e as
+  // chamadas internas do Orquestrador não usam essa tabela.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS usuario (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      nome         TEXT NOT NULL,
+      email        TEXT NOT NULL UNIQUE,
+      senha_hash   TEXT NOT NULL,
+      role         TEXT NOT NULL CHECK (role IN ('admin','atendente')),
+      mfa_secret   TEXT NOT NULL,
+      mfa_ativado  BOOLEAN NOT NULL DEFAULT false,
+      ativo        BOOLEAN NOT NULL DEFAULT true,
+      criado_em    TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
 }
 
 export async function audit(ator: string, acao: string, recursoId?: string) {

@@ -2,6 +2,20 @@ import "dotenv/config";
 import { pool } from "./db";
 import { embed } from "./embedding";
 import { hashCpf } from "./crypto";
+import { gerarSegredoMfa, hashSenha } from "./auth";
+
+// Usuários de demonstração do Painel do Atendente (Vox Briefing) — um de
+// cada role, para demonstrar o RBAC. Senha e segredo MFA em texto aberto
+// aqui são só para o ambiente local do MVP (ver aviso no README).
+const USUARIOS_DEMO = [
+  { nome: "Ana Torres (Admin)", email: "admin@clarovox.com", senha: "ClaroVox@Admin1", role: "admin" as const },
+  {
+    nome: "Bruno Lima (Atendente)",
+    email: "atendente@clarovox.com",
+    senha: "ClaroVox@Atendente1",
+    role: "atendente" as const,
+  },
+];
 
 // Dados fictícios de demonstração — planos ilustrativos para o MVP acadêmico,
 // não refletem o portfólio comercial real da Claro.
@@ -87,6 +101,24 @@ async function main() {
   } else {
     console.log("[seed] cliente de demonstração já existe");
   }
+
+  for (const u of USUARIOS_DEMO) {
+    const existente = await pool.query("SELECT id FROM usuario WHERE email = $1", [u.email]);
+    if (existente.rows.length) {
+      console.log(`[seed] usuário de demonstração '${u.email}' já existe`);
+      continue;
+    }
+    const senhaHash = await hashSenha(u.senha);
+    const mfaSecret = gerarSegredoMfa();
+    await pool.query(
+      `INSERT INTO usuario (nome, email, senha_hash, role, mfa_secret) VALUES ($1, $2, $3, $4, $5)`,
+      [u.nome, u.email, senhaHash, u.role, mfaSecret]
+    );
+    console.log(`[seed] usuário de demonstração '${u.email}' (${u.role}) criado — senha: ${u.senha}`);
+  }
+  console.log(
+    "[seed] no primeiro login de cada usuário de demonstração, o painel mostra o QR code para configurar o MFA (Google Authenticator, Authy, etc.)."
+  );
 
   console.log("[seed] concluído.");
   await pool.end();

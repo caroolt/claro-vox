@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { pool } from "../db";
 import { h } from "../asyncHandler";
+import { requireAuth } from "../middleware/auth";
 
 export const knowledgeRouter = Router();
 
 // GET /v1/knowledge — painel "Base de Conhecimento (RAG)" do Vox Briefing (leitura)
-knowledgeRouter.get("/", h(async (_req, res) => {
+knowledgeRouter.get("/", requireAuth, h(async (_req, res) => {
   const result = await pool.query("SELECT id, titulo, conteudo, categoria FROM knowledge_base ORDER BY titulo");
   res.json(result.rows);
 }));

@@ -123,6 +123,43 @@ Abra http://localhost:5173.
 Use esse CPF para demonstrar o **reconhecimento cross-canal (RF004)** sem
 precisar refazer o Cold Start.
 
+## Autenticação e RBAC do Painel do Atendente (Vox Briefing)
+
+Só o **Painel do Atendente / Vox Briefing** exige login — o Simulador de
+Cliente continua 100% aberto (é o que representa o cliente final falando
+com o Vox). O login tem duas etapas:
+
+1. **E-mail + senha.**
+2. **Código de 6 dígitos (MFA/2FA, TOTP — RFC 6238).** No primeiro acesso de
+   cada conta, o painel mostra um QR code (gerado localmente pela CIV, o
+   segredo nunca sai do servidor) para configurar um app autenticador
+   (Google Authenticator, Authy, 1Password, etc.); nos logins seguintes só
+   pede o código.
+
+Duas roles (RBAC), aplicado tanto no back-end (CIV) quanto nas abas do
+front-end:
+
+| Role | Abas visíveis |
+|---|---|
+| **Admin** | Visão geral, Operação, Clientes, Conhecimento (RAG) + **Atendentes** (CRUD dos usuários do painel) |
+| **Atendente** | Operação, Clientes, Conhecimento (RAG) |
+
+### Usuários de demonstração (criados pelo seed)
+
+| E-mail | Senha | Role |
+|---|---|---|
+| `admin@clarovox.com` | `ClaroVox@Admin1` | admin |
+| `atendente@clarovox.com` | `ClaroVox@Atendente1` | atendente |
+
+Nenhum dos dois tem o MFA configurado ainda — no primeiro login de cada um,
+escaneie o QR exibido na tela com um app autenticador e digite o código
+gerado para concluir a configuração.
+
+**Aviso de MVP:** como nas demais simplificações documentadas acima, essas
+credenciais/segredos existem só para rodar o projeto localmente; troque
+`JWT_SECRET` (e as senhas dos usuários) antes de qualquer uso além da
+demonstração acadêmica.
+
 ## Roteiro sugerido para o vídeo (6–8 minutos)
 
 Este roteiro é uma sugestão para a equipe gravar a demonstração — **não é
@@ -190,3 +227,4 @@ claro-vox-app/
 | RF011 | Segmentação cliente ativo vs. prospecção | `civ/src/routes/coldstart.ts` |
 | RNF (LGPD art. 18) | Direito de exclusão | `civ/src/routes/clientes.ts` |
 | RNF (segurança do CPF) | Pseudonimização via HMAC-SHA-256 | `civ/src/crypto.ts` |
+| RNF (autenticação do painel) | Login + MFA (TOTP) e RBAC (admin/atendente) no Vox Briefing | `civ/src/auth.ts`, `civ/src/middleware/auth.ts`, `civ/src/routes/auth.ts`, `civ/src/routes/usuarios.ts` |

@@ -2,10 +2,12 @@ import { Router } from "express";
 import { pool, audit } from "../db";
 import { broadcast } from "../ws";
 import { h } from "../asyncHandler";
+import { requireAuth } from "../middleware/auth";
 
 export const handoffRouter = Router();
 
-// POST /v1/handoff — acionado pelo Orquestrador quando não resolve sozinho (RF007, RF009)
+// POST /v1/handoff — acionado pelo Orquestrador quando não resolve sozinho
+// (RF007, RF009) — pública, chamada internamente, sem usuário logado.
 handoffRouter.post("/", h(async (req, res) => {
   const { sessao_id, motivo, tom_emocional, resumo_jornada, sugestao_resolucao } = req.body || {};
   if (!sessao_id || !motivo) return res.status(400).json({ erro: "sessao_id e motivo são obrigatórios" });
@@ -32,7 +34,7 @@ handoffRouter.post("/", h(async (req, res) => {
 }));
 
 // GET /v1/handoff — fila de briefings (histórico + pendentes) para o Vox Briefing
-handoffRouter.get("/", h(async (req, res) => {
+handoffRouter.get("/", requireAuth, h(async (req, res) => {
   const result = await pool.query(`
     SELECT b.*, s.estado AS sessao_estado, s.canal_origem_id,
            cl.id AS cliente_id, cl.nome AS cliente_nome,
@@ -47,26 +49,28 @@ handoffRouter.get("/", h(async (req, res) => {
   res.json(result.rows);
 }));
 
-handoffRouter.get("/:id", h(async (req, res) => {
+handoffRouter.get("/:id", requireAuth, h(async (req, res) => {
   const b = await getBriefingCompleto(req.params.id);
   if (!b) return res.status(404).json({ erro: "briefing não encontrado" });
   res.json(b);
 }));
 
-// POST /v1/handoff/:id/assumir — atendente humano assume a sessão
-handoffRouter.post("/:id/assumir", h(async (req, res) => {
-  const { atendente_id } = req.body || {};
+// POST /v1/handoff/:id/assumir — atendente humano assume a sessão. O
+// atendente é sempre o dono do token (não confiamos mais em atendente_id
+// vindo do corpo da requisição — antes era um valor fixo "atendente-demo").
+handoffRouter.post("/:id/assumir", requireAuth, h(async (req, res) => {
+  const atendenteNome = req.usuario!.nome;
   const briefingRes = await pool.query("SELECT * FROM briefing WHERE id = $1", [req.params.id]);
   if (!briefingRes.rows.length) return res.status(404).json({ erro: "briefing não encontrado" });
-  await pool.query(`UPDATE handoff SET atendente_id = $1, assumido_em = now() WHERE briefing_id = $2`, [atendente_id || "atendente-demo", req.params.id]);
+  await pool.query(`UPDATE handoff SET atendente_id = $1, assumido_em = now() WHERE briefing_id = $2`, [atendenteNome, req.params.id]);
   await pool.query(`UPDATE sessao SET estado = 'EM_ATENDIMENTO_HUMANO', atualizado_em = now() WHERE id = $1`, [briefingRes.rows[0].sessao_id]);
-  await audit(atendente_id || "atendente-demo", "handoff.assumido", req.params.id);
-  broadcast("handoff.assumed", { briefing_id: req.params.id, sessao_id: briefingRes.rows[0].sessao_id, atendente_id });
+  await audit(req.usuario!.email, "handoff.assumido", req.params.id);
+  broadcast("handoff.assumed", { briefing_id: req.params.id, sessao_id: briefingRes.rows[0].sessao_id, atendente_id: atendenteNome });
   res.json({ ok: true });
 }));
 
 // POST /v1/handoff/:id/encerrar
-handoffRouter.post("/:id/encerrar", h(async (req, res) => {
+handoffRouter.post("/:id/encerrar", requireAuth, h(async (req, res) => {
   const briefingRes = await pool.query("SELECT * FROM briefing WHERE id = $1", [req.params.id]);
   if (!briefingRes.rows.length) return res.status(404).json({ erro: "briefing não encontrado" });
   await pool.query(`UPDATE handoff SET encerrado_em = now() WHERE briefing_id = $1`, [req.params.id]);

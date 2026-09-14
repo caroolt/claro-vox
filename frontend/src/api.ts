@@ -3,21 +3,41 @@ import type {
   ClienteDetalhe,
   ClienteResumo,
   KnowledgeItem,
+  LoginConcluido,
+  LoginIniciado,
   Mensagem,
   Metrics,
   SessaoResumo,
   Suggestions,
   Transcript,
+  Usuario,
+  UsuarioAdmin,
 } from "./types";
 
 export const CIV_URL = import.meta.env.VITE_CIV_URL || "http://localhost:4001";
 export const ORCH_URL = import.meta.env.VITE_ORCH_URL || "http://localhost:4002";
 
+// Token do Painel do Atendente (Vox Briefing) — anexado em toda chamada à
+// CIV assim que o login (senha + MFA) é concluído. O Simulador de Cliente e
+// o Orquestrador não precisam dele; rotas públicas simplesmente o ignoram.
+let authToken: string | null = null;
+let onNaoAutorizado: (() => void) | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
+// Chamado quando alguma requisição autenticada volta 401 — sessão expirada
+// ou revogada; o App usa isso para derrubar o usuário de volta ao login.
+export function onAuthExpirado(callback: () => void) {
+  onNaoAutorizado = callback;
+}
+
 async function req<T>(url: string, opts?: RequestInit): Promise<T> {
-  const resp = await fetch(url, {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...(opts?.headers || {}) },
-  });
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...(opts?.headers as any) };
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const resp = await fetch(url, { ...opts, headers });
+  if (resp.status === 401 && authToken) onNaoAutorizado?.();
   if (!resp.ok) {
     const body = await resp.text().catch(() => "");
     throw new Error(`${resp.status} ${resp.statusText}: ${body}`);
@@ -62,8 +82,8 @@ export const civ = {
   sessionSuggestions: (id: string) => req<Suggestions>(`${CIV_URL}/v1/sessions/${id}/suggestions`),
   handoffQueue: () => req<Briefing[]>(`${CIV_URL}/v1/handoff`),
   handoffDetail: (id: string) => req<Briefing>(`${CIV_URL}/v1/handoff/${id}`),
-  handoffAssumir: (id: string, atendente_id: string) =>
-    req<any>(`${CIV_URL}/v1/handoff/${id}/assumir`, { method: "POST", body: JSON.stringify({ atendente_id }) }),
+  // O atendente é sempre quem está logado (token) — não é mais passado no corpo.
+  handoffAssumir: (id: string) => req<any>(`${CIV_URL}/v1/handoff/${id}/assumir`, { method: "POST" }),
   handoffEncerrar: (id: string) => req<any>(`${CIV_URL}/v1/handoff/${id}/encerrar`, { method: "POST" }),
   knowledge: () => req<KnowledgeItem[]>(`${CIV_URL}/v1/knowledge`),
   metrics: () => req<Metrics>(`${CIV_URL}/v1/metrics`),
@@ -102,6 +122,37 @@ export const civ = {
       method: "POST",
       body: JSON.stringify({ remetente, canal, conteudo }),
     }),
+};
+
+// -------- Autenticação do Painel do Atendente (login + MFA) --------
+export const auth = {
+  login: (email: string, senha: string) =>
+    req<LoginIniciado>(`${CIV_URL}/v1/auth/login`, { method: "POST", body: JSON.stringify({ email, senha }) }),
+  mfaVerificar: (login_token: string, codigo: string) =>
+    req<LoginConcluido>(`${CIV_URL}/v1/auth/mfa/verificar`, {
+      method: "POST",
+      body: JSON.stringify({ login_token, codigo }),
+    }),
+  me: () => req<Usuario>(`${CIV_URL}/v1/auth/me`),
+};
+
+// -------- Gestão de atendentes/admins (aba "Atendentes", exclusiva do admin) --------
+export const usuarios = {
+  listar: () => req<UsuarioAdmin[]>(`${CIV_URL}/v1/usuarios`),
+  criar: (payload: { nome: string; email: string; senha: string; role: "admin" | "atendente" }) =>
+    req<UsuarioAdmin>(`${CIV_URL}/v1/usuarios`, { method: "POST", body: JSON.stringify(payload) }),
+  atualizar: (
+    id: string,
+    payload: Partial<{
+      nome: string;
+      email: string;
+      role: "admin" | "atendente";
+      ativo: boolean;
+      senha: string;
+      resetar_mfa: boolean;
+    }>
+  ) => req<UsuarioAdmin>(`${CIV_URL}/v1/usuarios/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  excluir: (id: string) => req<{ ok: boolean }>(`${CIV_URL}/v1/usuarios/${id}`, { method: "DELETE" }),
 };
 
 export function wsBriefingUrl(): string {
