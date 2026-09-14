@@ -112,7 +112,7 @@ clientesRouter.get("/alertas", requireAuth, h(async (req, res) => {
     const tons = tonsPorCliente.get(clienteId) || {};
     const totalTageado = Object.values(tons).reduce((soma, n) => soma + n, 0);
     const amostraSuficiente = totalTageado >= MIN_MENSAGENS_TAGEADAS;
-    const hostil = amostraSuficiente && (tons.frustracao || 0) / totalTageado >= LIMIAR_TENDENCIA;
+    const hostil = amostraSuficiente && (tons.hostil || 0) / totalTageado >= LIMIAR_TENDENCIA;
     const urgente = amostraSuficiente && (tons.urgencia || 0) / totalTageado >= LIMIAR_TENDENCIA;
     const chamados_semana = chamadosPorCliente.get(clienteId) || 0;
     return {

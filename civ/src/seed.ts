@@ -271,15 +271,15 @@ interface ClienteSeed {
 function sessaoCobrancaFernanda(diasAtras: number, resolvida: boolean, numeroChamada: number): SessaoSeed {
   const reclamacao =
     numeroChamada === 1
-      ? "voces cobraram um valor que eu nao reconheco na fatura, isso e um absurdo"
-      : `essa e a ${numeroChamada}a vez que ligo sobre a mesma cobranca indevida, nao aguento mais isso`;
+      ? "voces sao uns incompetentes, cobraram um valor que eu nao reconheco na fatura"
+      : `que atendimento de merda, essa e a ${numeroChamada}a vez que ligo sobre a mesma cobranca indevida`;
   const mensagens: MensagemSeed[] = [
     {
       remetente: "cliente",
       conteudo: reclamacao,
       minutosDepois: 0,
       categoria: "atendimento/cobranca_contestada",
-      tom: "frustracao",
+      tom: "hostil",
     },
     {
       remetente: "vox",
@@ -312,8 +312,8 @@ function sessaoCobrancaFernanda(diasAtras: number, resolvida: boolean, numeroCha
     jornadaStatus: resolvida ? "RESOLVIDO" : "AGUARDANDO_TRANSBORDO",
     mensagens,
     briefing: {
-      motivo_transbordo: "cliente demonstrou frustração/tom hostil na mensagem",
-      tom_emocional: "frustracao",
+      motivo_transbordo: "cliente demonstrou comportamento hostil (xingamento/ofensa) na mensagem",
+      tom_emocional: "hostil",
       resumo_jornada: `Cliente Fernanda Alves — intenção: atendimento/cobranca_contestada. Última mensagem: "${reclamacao}".`,
       sugestao_resolucao: "Verificar histórico de faturas do cliente e cobranças em duplicidade antes de responder.",
       atendenteId: resolvida ? ATENDENTE_DEMO_NOME : null,
@@ -368,7 +368,7 @@ function sessaoSuporteRicardo(diasAtras: number, resolvida: boolean, numeroChama
     jornadaStatus: resolvida ? "RESOLVIDO" : "AGUARDANDO_TRANSBORDO",
     mensagens,
     briefing: {
-      motivo_transbordo: "cliente demonstrou frustração/tom hostil na mensagem",
+      motivo_transbordo: "cliente demonstrou frustração na mensagem",
       tom_emocional: "frustracao",
       resumo_jornada: `Cliente Ricardo Teixeira — intenção: atendimento/suporte_tecnico. Última mensagem: "${reclamacao}".`,
       sugestao_resolucao: "Verificar instabilidade confirmada na região antes de agendar visita técnica.",

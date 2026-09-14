@@ -50,26 +50,40 @@ PALAVRAS_FRUSTRACAO = [
     "absurdo", "ridiculo", "pessimo", "horrivel", "cansado disso", "cansada disso",
     "cansei disso", "ja liguei", "terceira vez", "quarta vez", "quinta vez",
     "enesima vez", "nunca resolve", "nao aguento", "nao aguento mais", "revoltante",
-    "indignad", "furios", "irritad", "estou p da vida", "que descaso", "descaso",
-    # xingamentos e expressões vulgares de raiva - comuns num cliente irritado
-    # de verdade e que precisam ser reconhecidos como frustração, não ficarem
-    # de fora só porque não são "educados"
-    "porra", "caralho", "merda", "desgraca", "droga", "cacete", "bosta",
-    "inferno", "fdp", "foda", "fuder", "se fuder", "se foder", "puto", "puta",
-    "vsf", "pqp", "que saco", "saco cheio", "encheu o saco", "detesto",
-    "odeio", "que raiva", "estou puto", "estou furiosa", "que porcaria",
-    "lixo de", "incompetente", "inutil", "vergonha", "vergonha alheia",
-    "toma no cu", "tomar no cu", "va se catar", "va a merda", "vai a merda",
-    "se ferra", "vai se ferrar", "seu lixo", "seu idiota", "otario",
-    "arrombado", "desgracado", "cambada de", "raça de",
-    # decepção/reclamação formal - tom hostil sem necessariamente ser vulgar
+    "indignad", "furios", "irritad", "que descaso", "descaso", "inutil",
+    "vergonha", "vergonha alheia",
+    # decepção/reclamação - insatisfação com o serviço, sem xingamento ou
+    # ofensa direta a alguém (isso é PALAVRAS_HOSTIL, ver abaixo)
     "decepcionad", "decepcionante", "insatisfeit", "um caos", "isso e um caos",
     "palhacada", "que piada", "brincadeira isso", "sem noção", "sem noçao",
     "sem cabimento", "cade a solucao", "cade a solução", "ninguem resolve",
-    "ninguém resolve", "empresa lixo", "atendimento pessimo", "nunca mais",
+    "ninguém resolve", "atendimento pessimo", "nunca mais",
     "vou processar", "vou no procon", "procon", "reclame aqui", "que roubo",
     "isso e roubo", "e um roubo", "que falta de respeito", "falta de respeito",
     "de novo esse problema", "sempre a mesma coisa", "toda vez e a mesma coisa",
+]
+
+# Hostilidade é diferente de frustração: frustração é insatisfação com o
+# serviço ("isso não resolve", "que descaso"); hostilidade é xingamento,
+# ofensa pessoal (à empresa ou ao atendente) ou desprezo/preconceito
+# explícito. Um cliente hostil também está frustrado, mas nem todo cliente
+# frustrado é hostil — por isso são tons separados (e o alerta de
+# comportamento na fila de transbordo usa esse, não o de frustração).
+# Termos de preconceito propriamente ditos (insultos discriminatórios) não
+# são listados aqui palavra por palavra por não serem apropriados no
+# código-fonte; a lista cobre xingamentos e ofensas diretas em geral — a
+# via do LLM real (llm.py), quando configurada, lida melhor com nuance de
+# preconceito do que este motor de regras por palavra-chave.
+PALAVRAS_HOSTIL = [
+    "porra", "caralho", "merda", "desgraca", "droga", "cacete", "bosta",
+    "inferno", "fdp", "foda", "fuder", "se fuder", "se foder", "puto", "puta",
+    "vsf", "pqp", "estou p da vida", "que saco", "saco cheio", "encheu o saco",
+    "detesto", "odeio", "que raiva", "estou puto", "estou furiosa", "que porcaria",
+    "lixo de", "empresa lixo", "seu lixo", "seu idiota", "otario", "imbecil",
+    "estupido", "estupida", "idiota", "burro", "burra", "incompetente",
+    "sem vergonha", "arrombado", "desgracado", "cambada de", "raça de",
+    "toma no cu", "tomar no cu", "va se catar", "va a merda", "vai a merda",
+    "se ferra", "vai se ferrar", "vagabundo", "vagabunda", "safado", "safada",
 ]
 
 PALAVRAS_URGENCIA = [
@@ -108,9 +122,14 @@ def _gritando(texto_original: str) -> bool:
 
 
 def detectar_tom_emocional(texto_norm: str, texto_original: str = "") -> Optional[str]:
-    if any(p in texto_norm for p in PALAVRAS_FRUSTRACAO):
-        return "frustracao"
+    # Hostilidade é checada primeiro — é o sinal mais forte (xingamento,
+    # ofensa) e não deveria ser mascarado por uma palavra de frustração que
+    # também apareça na mesma mensagem.
+    if any(p in texto_norm for p in PALAVRAS_HOSTIL):
+        return "hostil"
     if texto_original and _gritando(texto_original):
+        return "hostil"
+    if any(p in texto_norm for p in PALAVRAS_FRUSTRACAO):
         return "frustracao"
     if any(p in texto_norm for p in PALAVRAS_URGENCIA):
         return "urgencia"
@@ -157,21 +176,25 @@ def classificar(texto: str, categoria_anterior: Optional[str] = None) -> Intenca
 
     tentativas_anteriores_falharam = continuidade or (categoria_anterior == categoria and categoria_anterior is not None)
 
-    # Regra de negócio (Seção 5.6/5.7): cliente frustrado (xingamento,
-    # grito, expressão de raiva) vai direto para transbordo — não espera
-    # uma "segunda tentativa fracassada", pois um cliente já hostil na
-    # primeira mensagem não deve ficar preso a respostas automáticas.
-    # Cobrança contestada some transborda mesmo sem frustração explícita
-    # quando a mesma dúvida se repete (explicação automática não resolveu)
-    # — simula o "Cenário 3" documentado.
+    # Regra de negócio (Seção 5.6/5.7): cliente hostil (xingamento, grito) ou
+    # frustrado (insatisfação explícita) vai direto para transbordo — não
+    # espera uma "segunda tentativa fracassada", pois um cliente já nesse
+    # estado na primeira mensagem não deve ficar preso a respostas
+    # automáticas. Cobrança contestada sempre transborda mesmo sem tom
+    # negativo explícito quando a mesma dúvida se repete (explicação
+    # automática não resolveu) — simula o "Cenário 3" documentado.
     requer_transbordo = False
     motivo = None
-    if tom == "frustracao":
+    if tom in ("hostil", "frustracao"):
         requer_transbordo = True
         motivo = (
             "cobrança contestada não resolvida automaticamente + tom emocional negativo"
             if categoria == "atendimento/cobranca_contestada"
-            else "cliente demonstrou frustração/tom hostil na mensagem"
+            else (
+                "cliente demonstrou comportamento hostil (xingamento/ofensa) na mensagem"
+                if tom == "hostil"
+                else "cliente demonstrou frustração na mensagem"
+            )
         )
     elif categoria == "atendimento/cobranca_contestada" and tentativas_anteriores_falharam:
         requer_transbordo = True
