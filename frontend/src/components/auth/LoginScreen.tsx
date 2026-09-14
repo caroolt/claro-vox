@@ -90,7 +90,7 @@ export function LoginScreen({ onEntrar }: { onEntrar: (token: string, usuario: U
         {etapa === "mfa_configuracao" && (
           <form onSubmit={confirmarCodigo} className="space-y-3">
             <p className="text-xs text-gray-500">
-              Primeiro acesso — escaneie este QR code em um app autenticador (Google Authenticator, Authy, etc.) e
+              Primeiro acesso, escaneie este QR code em um app autenticador (Google Authenticator, Authy, etc.) e
               depois digite o código de 6 dígitos gerado.
             </p>
             <div className="flex justify-center">
