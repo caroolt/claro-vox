@@ -23,10 +23,12 @@ export const ESTADO_ORDEM = [
 ];
 
 // "hostil" (xingamento/ofensa) é um tom mais grave que "frustracao" (só
-// insatisfação com o serviço, sem ofensa) — por isso cores distintas.
+// insatisfação com o serviço, sem ofensa) — por isso status (e cor no
+// gráfico "por tom emocional" da Visão geral) diferentes: hostil usa o
+// vermelho mais grave (critical), frustração usa o laranja (serious).
 export const TOM_META: Record<string, { label: string; status: StatusKey; badge: string }> = {
   hostil: { label: "Hostilidade", status: "critical", badge: "bg-red-200 text-red-900" },
-  frustracao: { label: "Frustração", status: "critical", badge: "bg-red-100 text-red-700" },
+  frustracao: { label: "Frustração", status: "serious", badge: "bg-orange-100 text-orange-700" },
   urgencia: { label: "Urgência", status: "warning", badge: "bg-amber-100 text-amber-800" },
   satisfacao: { label: "Satisfação", status: "good", badge: "bg-green-100 text-green-700" },
   neutro: { label: "Neutro", status: "neutral", badge: "bg-gray-100 text-gray-600" },
