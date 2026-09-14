@@ -1,5 +1,7 @@
 import type {
+  AuditoriaEntry,
   Briefing,
+  ClienteAlerta,
   ClienteDetalhe,
   ClienteResumo,
   KnowledgeItem,
@@ -87,6 +89,9 @@ export const civ = {
   handoffEncerrar: (id: string) => req<any>(`${CIV_URL}/v1/handoff/${id}/encerrar`, { method: "POST" }),
   knowledge: () => req<KnowledgeItem[]>(`${CIV_URL}/v1/knowledge`),
   metrics: () => req<Metrics>(`${CIV_URL}/v1/metrics`),
+  // Log de ações sensíveis (login, MFA, CRUD de usuários, exclusão LGPD,
+  // export de transcript etc.) — card de auditoria da Visão geral (admin).
+  auditoria: () => req<AuditoriaEntry[]>(`${CIV_URL}/v1/auditoria`),
   // Busca de clientes para o painel do atendente — `q` = nome/telefone
   // parcial, `cpf` = CPF completo (match exato por hash). Sem filtro,
   // devolve os clientes mais recentes.
@@ -97,6 +102,13 @@ export const civ = {
     if (params.limit) qs.set("limit", String(params.limit));
     const sufixo = qs.toString() ? `?${qs}` : "";
     return req<ClienteResumo[]>(`${CIV_URL}/v1/clientes${sufixo}`);
+  },
+  // Alertas de comportamento (tendência a hostilidade/urgência, chamados na
+  // semana) para os clientes que aparecem na fila de transbordo.
+  clientesAlertas: (ids: string[]) => {
+    const idsUnicos = [...new Set(ids)];
+    if (!idsUnicos.length) return Promise.resolve<ClienteAlerta[]>([]);
+    return req<ClienteAlerta[]>(`${CIV_URL}/v1/clientes/alertas?ids=${idsUnicos.join(",")}`);
   },
   clienteDetalhe: (id: string) => req<ClienteDetalhe>(`${CIV_URL}/v1/clientes/${id}`),
   excluirCliente: (id: string) => req<any>(`${CIV_URL}/v1/clientes/${id}`, { method: "DELETE" }),

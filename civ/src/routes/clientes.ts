@@ -57,6 +57,76 @@ clientesRouter.get("/", requireAuth, h(async (req, res) => {
   );
 }));
 
+// GET /v1/clientes/alertas?ids=<id1,id2,...>: alertas de comportamento para
+// a fila de transbordo (Operação). Tendência a hostilidade/urgência com base
+// no tom das mensagens já classificadas, e quantos transbordos esse cliente
+// abriu nos últimos 7 dias (usado para priorizar a fila). Precisa vir antes
+// de "/:id" para não ser capturada por esse parâmetro.
+const MIN_MENSAGENS_TAGEADAS = 3;
+const LIMIAR_TENDENCIA = 0.4;
+const LIMIAR_PRIORIDADE = 3;
+
+clientesRouter.get("/alertas", requireAuth, h(async (req, res) => {
+  const ids = String(req.query.ids || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const idsUnicos = [...new Set(ids)];
+  if (!idsUnicos.length) return res.json([]);
+
+  const [tomRes, chamadosRes] = await Promise.all([
+    pool.query(
+      `
+      SELECT s.cliente_id, i.tom_emocional, COUNT(*) AS total
+      FROM intencao i
+      JOIN mensagem m ON m.id = i.mensagem_id
+      JOIN sessao s ON s.id = m.sessao_id
+      WHERE s.cliente_id = ANY($1::uuid[]) AND i.tom_emocional IS NOT NULL
+      GROUP BY s.cliente_id, i.tom_emocional
+    `,
+      [idsUnicos]
+    ),
+    pool.query(
+      `
+      SELECT s.cliente_id, COUNT(*) AS total
+      FROM briefing b
+      JOIN sessao s ON s.id = b.sessao_id
+      WHERE s.cliente_id = ANY($1::uuid[]) AND b.gerado_em >= now() - interval '7 days'
+      GROUP BY s.cliente_id
+    `,
+      [idsUnicos]
+    ),
+  ]);
+
+  const tonsPorCliente = new Map<string, Record<string, number>>();
+  tomRes.rows.forEach((r) => {
+    const atual = tonsPorCliente.get(r.cliente_id) || {};
+    atual[r.tom_emocional] = Number(r.total);
+    tonsPorCliente.set(r.cliente_id, atual);
+  });
+
+  const chamadosPorCliente = new Map<string, number>();
+  chamadosRes.rows.forEach((r) => chamadosPorCliente.set(r.cliente_id, Number(r.total)));
+
+  const alertas = idsUnicos.map((clienteId) => {
+    const tons = tonsPorCliente.get(clienteId) || {};
+    const totalTageado = Object.values(tons).reduce((soma, n) => soma + n, 0);
+    const amostraSuficiente = totalTageado >= MIN_MENSAGENS_TAGEADAS;
+    const hostil = amostraSuficiente && (tons.frustracao || 0) / totalTageado >= LIMIAR_TENDENCIA;
+    const urgente = amostraSuficiente && (tons.urgencia || 0) / totalTageado >= LIMIAR_TENDENCIA;
+    const chamados_semana = chamadosPorCliente.get(clienteId) || 0;
+    return {
+      cliente_id: clienteId,
+      hostil,
+      urgente,
+      chamados_semana,
+      prioridade: chamados_semana >= LIMIAR_PRIORIDADE,
+    };
+  });
+
+  res.json(alertas);
+}));
+
 // GET /v1/clientes/:id — dossiê completo do cliente para o drawer de detalhe.
 clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
   const { id } = req.params;

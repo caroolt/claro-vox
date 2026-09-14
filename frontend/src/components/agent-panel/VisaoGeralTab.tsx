@@ -1,4 +1,4 @@
-import type { Metrics } from "../../types";
+import type { AuditoriaEntry, Metrics } from "../../types";
 import { CAT_HEX, CompareBars, Meter, StackedBar, STATUS_HEX } from "../charts";
 import {
   CANAL_META,
@@ -18,11 +18,13 @@ export function VisaoGeralTab({
   sessoesAtivas,
   flash,
   onEstadoClick,
+  auditoria,
 }: {
   metrics: Metrics | null;
   sessoesAtivas: number;
   flash: boolean;
   onEstadoClick: (estado: string) => void;
+  auditoria: AuditoriaEntry[];
 }) {
   if (!metrics) {
     return <p className="text-sm text-gray-400">Carregando indicadores…</p>;
@@ -120,8 +122,53 @@ export function VisaoGeralTab({
           </div>
         </div>
       </section>
+
+      <section>
+        <SecaoRotulo>Auditoria</SecaoRotulo>
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <h4 className="text-sm font-medium text-gray-700">Ações sensíveis recentes</h4>
+            <span className="text-[11px] text-gray-400">últimos {auditoria.length} registros</span>
+          </div>
+          {auditoria.length === 0 ? (
+            <p className="text-sm text-gray-400">Nenhum registro de auditoria ainda.</p>
+          ) : (
+            <div className="max-h-72 overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-[11px] uppercase tracking-wide text-gray-400">
+                    <th className="py-1.5 pr-3 font-medium">Ação</th>
+                    <th className="py-1.5 pr-3 font-medium">Ator</th>
+                    <th className="py-1.5 pr-3 font-medium">Recurso</th>
+                    <th className="py-1.5 font-medium">Quando</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {auditoria.map((a) => (
+                    <tr key={a.id}>
+                      <td className="py-1.5 pr-3 font-medium text-gray-700">{a.acao}</td>
+                      <td className="py-1.5 pr-3 text-gray-500">{a.ator}</td>
+                      <td className="py-1.5 pr-3 text-gray-400">{a.recurso_id || "—"}</td>
+                      <td className="py-1.5 whitespace-nowrap text-gray-400">{formatarDataHora(a.timestamp)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
+}
+
+function formatarDataHora(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function sinal(n: number): string {

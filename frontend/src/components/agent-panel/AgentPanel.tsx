@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { civ } from "../../api";
 import logoClaroVox from "../../assets/claro-vox-logo.png";
-import type { Briefing, KnowledgeItem, Metrics, SessaoResumo, Usuario } from "../../types";
+import type { AuditoriaEntry, Briefing, KnowledgeItem, Metrics, SessaoResumo, Usuario } from "../../types";
 import { useBriefingSocket } from "../../useBriefingSocket";
 import { FILTROS_VAZIOS, type FiltrosOperacao } from "./meta";
 import { exportarBriefingZip } from "./exportar";
@@ -41,6 +41,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
   const [sessoes, setSessoes] = useState<SessaoResumo[]>([]);
   const [fila, setFila] = useState<Briefing[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [auditoria, setAuditoria] = useState<AuditoriaEntry[]>([]);
   const [kb, setKb] = useState<KnowledgeItem[]>([]);
   const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
   const [flash, setFlash] = useState(false);
@@ -54,18 +55,20 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
   const { ultimoEvento, conectado } = useBriefingSocket();
 
   async function carregarTudo() {
-    // Métricas (Visão geral) são exclusivas do admin — atendente não tem
-    // permissão na CIV para essa rota, então nem chamamos para essa role.
-    const [s, f, m, k] = await Promise.all([
+    // Métricas e auditoria (Visão geral) são exclusivas do admin — atendente
+    // não tem permissão na CIV para essas rotas, então nem chamamos para essa role.
+    const [s, f, m, k, a] = await Promise.all([
       civ.sessions(true),
       civ.handoffQueue(),
       usuario.role === "admin" ? civ.metrics() : Promise.resolve(null),
       civ.knowledge(),
+      usuario.role === "admin" ? civ.auditoria() : Promise.resolve([]),
     ]);
     setSessoes(s);
     setFila(f);
     setMetrics(m);
     setKb(k);
+    setAuditoria(a);
     setAtualizadoEm(new Date());
   }
 
@@ -201,6 +204,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
             sessoesAtivas={sessoes.length}
             flash={flash}
             onEstadoClick={irParaEstado}
+            auditoria={auditoria}
           />
         )}
 

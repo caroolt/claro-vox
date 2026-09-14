@@ -48,22 +48,53 @@ REGRAS = [
 
 PALAVRAS_FRUSTRACAO = [
     "absurdo", "ridiculo", "pessimo", "horrivel", "cansado disso", "cansada disso",
-    "ja liguei", "terceira vez", "nunca resolve", "nao aguento", "revoltante",
-    "indignad", "furios", "irritad", "estou p da vida", "que descaso",
-    # xingamentos e expressões vulgares de raiva — comuns num cliente irritado
+    "cansei disso", "ja liguei", "terceira vez", "quarta vez", "quinta vez",
+    "enesima vez", "nunca resolve", "nao aguento", "nao aguento mais", "revoltante",
+    "indignad", "furios", "irritad", "estou p da vida", "que descaso", "descaso",
+    # xingamentos e expressões vulgares de raiva - comuns num cliente irritado
     # de verdade e que precisam ser reconhecidos como frustração, não ficarem
     # de fora só porque não são "educados"
     "porra", "caralho", "merda", "desgraca", "droga", "cacete", "bosta",
     "inferno", "fdp", "foda", "fuder", "se fuder", "se foder", "puto", "puta",
     "vsf", "pqp", "que saco", "saco cheio", "encheu o saco", "detesto",
     "odeio", "que raiva", "estou puto", "estou furiosa", "que porcaria",
-    "lixo de", "incompetente", "inutil", "vergonha",
+    "lixo de", "incompetente", "inutil", "vergonha", "vergonha alheia",
     "toma no cu", "tomar no cu", "va se catar", "va a merda", "vai a merda",
     "se ferra", "vai se ferrar", "seu lixo", "seu idiota", "otario",
     "arrombado", "desgracado", "cambada de", "raça de",
+    # decepção/reclamação formal - tom hostil sem necessariamente ser vulgar
+    "decepcionad", "decepcionante", "insatisfeit", "um caos", "isso e um caos",
+    "palhacada", "que piada", "brincadeira isso", "sem noção", "sem noçao",
+    "sem cabimento", "cade a solucao", "cade a solução", "ninguem resolve",
+    "ninguém resolve", "empresa lixo", "atendimento pessimo", "nunca mais",
+    "vou processar", "vou no procon", "procon", "reclame aqui", "que roubo",
+    "isso e roubo", "e um roubo", "que falta de respeito", "falta de respeito",
+    "de novo esse problema", "sempre a mesma coisa", "toda vez e a mesma coisa",
 ]
 
-PALAVRAS_URGENCIA = ["urgente", "agora mesmo", "hoje mesmo", "imediatamente"]
+PALAVRAS_URGENCIA = [
+    "urgente", "urgencia", "e urgente", "agora mesmo", "hoje mesmo", "imediatamente",
+    "imediato", "o mais rapido possivel", "com a maior urgencia", "preciso agora",
+    "preciso disso agora", "nao pode esperar", "nao da pra esperar", "sem demora",
+    "e pra ontem", "para ontem", "neste instante", "nesse instante", "ja ja",
+    "correndo", "com pressa", "estou com pressa", "rapido por favor", "por favor rapido",
+    "asap", "sem tempo a perder", "nao tenho tempo", "preciso resolver hoje",
+    "tem que ser hoje", "antes das", "prazo apertado", "esta acabando o prazo",
+    "vence hoje", "vence amanha", "ultimo dia", "ultima chance", "emergencia",
+    "e emergencial", "socorro", "nao posso esperar mais", "quanto antes",
+    "assim que possivel", "com urgencia", "preciso ja",
+]
+
+PALAVRAS_SATISFACAO = [
+    "obrigad", "otimo", "otima", "excelente", "maravilha", "maravilhos",
+    "sensacional", "perfeito", "perfeita", "adorei", "amei", "gostei muito",
+    "super rapido", "muito rapido", "nota dez", "nota 10", "parabens",
+    "muito bom", "muito boa", "show", "mandou bem", "top", "incrivel",
+    "melhor atendimento", "otimo atendimento", "excelente atendimento",
+    "fico grato", "fico grata", "ficou otimo", "agradeco", "valeu", "vlw",
+    "bacana", "massa", "de boa", "tudo certo", "satisfeit", "resolveu rapido",
+    "resolveram rapido", "gostei do atendimento", "atendimento nota",
+]
 
 
 def _gritando(texto_original: str) -> bool:
@@ -83,7 +114,7 @@ def detectar_tom_emocional(texto_norm: str, texto_original: str = "") -> Optiona
         return "frustracao"
     if any(p in texto_norm for p in PALAVRAS_URGENCIA):
         return "urgencia"
-    if "obrigad" in texto_norm or "otimo" in texto_norm or "excelente" in texto_norm:
+    if any(p in texto_norm for p in PALAVRAS_SATISFACAO):
         return "satisfacao"
     return "neutro"
 
