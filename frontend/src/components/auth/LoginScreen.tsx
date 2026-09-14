@@ -57,8 +57,8 @@ export function LoginScreen({ onEntrar }: { onEntrar: (token: string, usuario: U
         <div className="mb-5 flex justify-center">
           <img src={logoClaroVox} alt="Claro Vox" className="h-7 w-auto" />
         </div>
-        <h2 className="mb-1 text-center text-sm font-semibold text-gray-700">Painel do Atendente — Vox Briefing</h2>
-        <p className="mb-5 text-center text-xs text-gray-400">Acesso restrito — login + verificação em duas etapas</p>
+        <h2 className="mb-1 text-center text-sm font-semibold text-gray-700">Vox Briefing</h2>
+        <p className="mb-5 text-center text-xs text-gray-400">Acesso restrito</p>
 
         {etapa === "credenciais" && (
           <form onSubmit={enviarCredenciais} className="space-y-3">

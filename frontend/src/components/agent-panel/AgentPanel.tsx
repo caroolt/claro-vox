@@ -131,7 +131,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
             <span className="inline-flex rounded-lg bg-claro-black px-2 py-1 shadow-sm">
               <img src={logoClaroVox} alt="Claro Vox" className="h-5 w-auto" />
             </span>
-            <p className="text-[11px] leading-tight text-gray-400">Painel do atendente — Vox Briefing</p>
+            <p className="text-[11px] leading-tight text-gray-400">Vox Briefing</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden text-[11px] text-gray-400 sm:inline">
