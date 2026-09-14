@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool, audit } from "../db";
 import { hashCpf } from "../crypto";
 import { h } from "../asyncHandler";
+import { requireAuth } from "../middleware/auth";
 
 export const clientesRouter = Router();
 
@@ -11,7 +12,7 @@ const NOME_ANONIMIZADO = "[excluído a pedido do titular]";
 // `cpf` (11 dígitos) faz match exato pelo hash — nunca guardamos o número
 // em texto puro (Seção 4.6). `q` faz busca parcial por nome ou telefone.
 // Sem parâmetros, lista os clientes mais recentes.
-clientesRouter.get("/", h(async (req, res) => {
+clientesRouter.get("/", requireAuth, h(async (req, res) => {
   const q = String(req.query.q || "").trim();
   const cpf = String(req.query.cpf || "").replace(/\D/g, "");
   const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 500);
@@ -57,7 +58,7 @@ clientesRouter.get("/", h(async (req, res) => {
 }));
 
 // GET /v1/clientes/:id — dossiê completo do cliente para o drawer de detalhe.
-clientesRouter.get("/:id", h(async (req, res) => {
+clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
   const { id } = req.params;
   const clienteRes = await pool.query("SELECT * FROM cliente WHERE id = $1", [id]);
   if (!clienteRes.rows.length) return res.status(404).json({ erro: "cliente não encontrado" });

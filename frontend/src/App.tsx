@@ -1,14 +1,47 @@
 import { useEffect, useState } from "react";
 import { ChatSimulator } from "./components/ChatSimulator";
 import { AgentPanel } from "./components/agent-panel/AgentPanel";
-import { civ, orchestrator } from "./api";
+import { LoginScreen } from "./components/auth/LoginScreen";
+import { civ, onAuthExpirado, orchestrator, setAuthToken } from "./api";
+import type { Usuario } from "./types";
 import logoClaroVox from "./assets/claro-vox-logo.png";
 
 type Aba = "cliente" | "atendente";
 
+const STORAGE_TOKEN = "vox_briefing_token";
+const STORAGE_USUARIO = "vox_briefing_usuario";
+
 function App() {
   const [aba, setAba] = useState<Aba>("cliente");
   const [status, setStatus] = useState<{ civ: boolean; orch: boolean }>({ civ: false, orch: false });
+  const [usuario, setUsuario] = useState<Usuario | null>(null);
+
+  // Restaura a sessão do painel (se houver) ao carregar a página, e derruba
+  // o usuário de volta ao login sempre que uma chamada autenticada voltar 401.
+  useEffect(() => {
+    const token = localStorage.getItem(STORAGE_TOKEN);
+    const usuarioSalvo = localStorage.getItem(STORAGE_USUARIO);
+    if (token && usuarioSalvo) {
+      setAuthToken(token);
+      setUsuario(JSON.parse(usuarioSalvo));
+    }
+    onAuthExpirado(() => sair());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function entrar(token: string, u: Usuario) {
+    setAuthToken(token);
+    localStorage.setItem(STORAGE_TOKEN, token);
+    localStorage.setItem(STORAGE_USUARIO, JSON.stringify(u));
+    setUsuario(u);
+  }
+
+  function sair() {
+    setAuthToken(null);
+    localStorage.removeItem(STORAGE_TOKEN);
+    localStorage.removeItem(STORAGE_USUARIO);
+    setUsuario(null);
+  }
 
   useEffect(() => {
     const checar = async () => {
@@ -31,6 +64,11 @@ function App() {
         <div className="flex items-center gap-4">
           <StatusDot ok={status.civ} label="CIV" />
           <StatusDot ok={status.orch} label="Orquestrador" />
+          {usuario && aba === "atendente" && (
+            <button onClick={sair} className="text-xs text-gray-300 hover:text-white">
+              {usuario.nome} · sair
+            </button>
+          )}
         </div>
       </header>
 
@@ -44,7 +82,13 @@ function App() {
       </nav>
 
       <main className="flex-1 overflow-hidden">
-        {aba === "cliente" ? <ChatSimulator /> : <AgentPanel />}
+        {aba === "cliente" ? (
+          <ChatSimulator />
+        ) : usuario ? (
+          <AgentPanel usuario={usuario} onSair={sair} />
+        ) : (
+          <LoginScreen onEntrar={entrar} />
+        )}
       </main>
     </div>
   );

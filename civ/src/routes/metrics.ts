@@ -1,13 +1,15 @@
 import { Router } from "express";
 import { pool } from "../db";
 import { h } from "../asyncHandler";
+import { requireAuth, requireRole } from "../middleware/auth";
 
 export const metricsRouter = Router();
 
 // GET /v1/metrics — versão simplificada do dashboard de SLO (Seção 7 / 8 da
 // documentação técnica). Em produção esses números vêm do Grafana; aqui são
 // calculados diretamente do Postgres para a demonstração do MVP.
-metricsRouter.get("/", h(async (_req, res) => {
+// Só a aba "Visão geral" usa essa rota, e ela é exclusiva da role admin.
+metricsRouter.get("/", requireAuth, requireRole("admin"), h(async (_req, res) => {
   const [sessoes, transbordo, tomEmocional, mensagens, porCanal, npsRows] = await Promise.all([
     pool.query(`SELECT estado, COUNT(*) FROM sessao GROUP BY estado`),
     // A taxa de transbordo mede a fração de sessões que EM ALGUM MOMENTO

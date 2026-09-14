@@ -9,6 +9,8 @@ import { knowledgeRouter } from "./routes/knowledge";
 import { metricsRouter } from "./routes/metrics";
 import { clientesRouter } from "./routes/clientes";
 import { npsRouter } from "./routes/nps";
+import { authRouter } from "./routes/auth";
+import { usuariosRouter } from "./routes/usuarios";
 import { initWs } from "./ws";
 import { pool, ensureSchema } from "./db";
 
@@ -32,6 +34,8 @@ app.use("/v1/knowledge", knowledgeRouter);
 app.use("/v1/metrics", metricsRouter);
 app.use("/v1/clientes", clientesRouter);
 app.use("/v1/nps", npsRouter);
+app.use("/v1/auth", authRouter);
+app.use("/v1/usuarios", usuariosRouter);
 
 // Middleware de erro global — qualquer exceção das rotas (via asyncHandler)
 // vira uma resposta JSON 500 em vez de derrubar o processo.

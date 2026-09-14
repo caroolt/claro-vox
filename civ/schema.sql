@@ -124,6 +124,21 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
   embedding  vector(64)
 );
 
+-- Contas do Painel do Atendente (Vox Briefing) — login + MFA (TOTP) e RBAC
+-- (admin / atendente). O simulador de cliente e as chamadas internas do
+-- Orquestrador continuam sem autenticação, ver Seção "Autenticação" do README.
+CREATE TABLE IF NOT EXISTS usuario (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome         TEXT NOT NULL,
+  email        TEXT NOT NULL UNIQUE,
+  senha_hash   TEXT NOT NULL,
+  role         TEXT NOT NULL CHECK (role IN ('admin','atendente')),
+  mfa_secret   TEXT NOT NULL,
+  mfa_ativado  BOOLEAN NOT NULL DEFAULT false,
+  ativo        BOOLEAN NOT NULL DEFAULT true,
+  criado_em    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessao_estado ON sessao(estado);
 CREATE INDEX IF NOT EXISTS idx_mensagem_sessao ON mensagem(sessao_id);
 CREATE INDEX IF NOT EXISTS idx_cliente_cpf_hash ON cliente(cpf_hash);

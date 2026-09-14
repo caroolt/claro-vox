@@ -6,11 +6,13 @@ import { broadcast } from "../ws";
 import { h } from "../asyncHandler";
 import { scrubTexto } from "../anonimizar";
 import { embed } from "../embedding";
+import { requireAuth } from "../middleware/auth";
 
 export const sessionsRouter = Router();
 
 // GET /v1/sessions — lista para o painel "Sessões Ativas" do Vox Briefing
-sessionsRouter.get("/", h(async (req, res) => {
+// (protegida — o Orquestrador não usa esta rota, só o front do painel).
+sessionsRouter.get("/", requireAuth, h(async (req, res) => {
   const somenteAtivas = req.query.ativas !== "false";
   const where = somenteAtivas ? "WHERE s.estado NOT IN ('ENCERRADA')" : "";
   const result = await pool.query(`
@@ -30,6 +32,7 @@ sessionsRouter.get("/", h(async (req, res) => {
 }));
 
 // GET /v1/sessions/:id/context — contrato documentado na Seção 4.5.2
+// (pública — chamada internamente pelo Orquestrador a cada mensagem).
 sessionsRouter.get("/:id/context", h(async (req, res) => {
   const { id } = req.params;
   const sessaoRes = await pool.query(
@@ -55,7 +58,7 @@ sessionsRouter.get("/:id/context", h(async (req, res) => {
 }));
 
 // GET /v1/sessions/:id/messages — histórico de mensagens de uma sessão
-sessionsRouter.get("/:id/messages", h(async (req, res) => {
+sessionsRouter.get("/:id/messages", requireAuth, h(async (req, res) => {
   const result = await pool.query(
     `SELECT m.id, m.remetente, m.conteudo, m.timestamp, ca.nome AS canal
      FROM mensagem m LEFT JOIN canal ca ON ca.id = m.canal_id
@@ -67,7 +70,7 @@ sessionsRouter.get("/:id/messages", h(async (req, res) => {
 
 // GET /v1/sessions/:id/transcript — transcrição da conversa já anonimizada,
 // para exportar em PDF sem vazar dado pessoal do titular (ver anonimizar.ts).
-sessionsRouter.get("/:id/transcript", h(async (req, res) => {
+sessionsRouter.get("/:id/transcript", requireAuth, h(async (req, res) => {
   const { id } = req.params;
   const sessaoRes = await pool.query(
     `SELECT s.id, s.estado, s.criado_em, s.atualizado_em,
@@ -136,7 +139,7 @@ sessionsRouter.get("/:id/transcript", h(async (req, res) => {
 // sugeridos para o atendente humano, re-ranqueados pelas últimas falas do
 // cliente (mesma busca vetorial do RAG). Sem fala do cliente ainda, devolve
 // os artigos padrão.
-sessionsRouter.get("/:id/suggestions", h(async (req, res) => {
+sessionsRouter.get("/:id/suggestions", requireAuth, h(async (req, res) => {
   const { id } = req.params;
   const msgs = await pool.query(
     `SELECT conteudo FROM mensagem WHERE sessao_id = $1 AND remetente = 'cliente' ORDER BY timestamp DESC LIMIT 3`,
