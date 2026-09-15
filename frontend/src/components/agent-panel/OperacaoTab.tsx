@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChevronRight, Headset, Radio, Search, X } from "lucide-react";
 import { civ } from "../../api";
 import type { Briefing, ClienteAlerta, SessaoResumo } from "../../types";
 import {
@@ -14,7 +15,7 @@ import {
   TOM_ORDEM,
   tomDaSessao,
 } from "./meta";
-import { EstadoBadge, NomeCliente, TomBadge } from "./ui";
+import { CanalTag, EstadoBadge, NomeCliente, SectionTitle, TomBadge } from "./ui";
 
 export function OperacaoTab({
   sessoes,
@@ -133,12 +134,15 @@ export function OperacaoTab({
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1 min-w-[220px] text-xs text-gray-500">
             Buscar cliente (nome ou CPF)
-            <input
-              value={filtros.busca}
-              onChange={(e) => set({ busca: e.target.value })}
-              placeholder="ex.: Carlos  ·  111.222.333-96"
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-claro-red focus:outline-none"
-            />
+            <div className="relative mt-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" strokeWidth={2} />
+              <input
+                value={filtros.busca}
+                onChange={(e) => set({ busca: e.target.value })}
+                placeholder="ex.: Carlos  ·  111.222.333-96"
+                className="w-full rounded-lg border border-gray-300 py-1.5 pl-8 pr-3 text-sm text-gray-800 focus:border-claro-red focus:outline-none"
+              />
+            </div>
           </label>
           <FiltroSelect
             rotulo="Estado"
@@ -161,9 +165,10 @@ export function OperacaoTab({
           {filtrosAtivos(filtros) && (
             <button
               onClick={() => setFiltros(FILTROS_VAZIOS)}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-500 hover:border-claro-red hover:text-claro-red"
+              className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-500 hover:border-claro-red hover:text-claro-red"
             >
-              limpar filtros ×
+              <X className="h-3.5 w-3.5" strokeWidth={2} />
+              limpar filtros
             </button>
           )}
         </div>
@@ -182,7 +187,7 @@ export function OperacaoTab({
         {/* Fila de transbordo */}
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-medium text-gray-700">Fila de transbordo (RF007-009)</h3>
+            <SectionTitle icone={Headset}>Fila de transbordo (RF007-009)</SectionTitle>
             <div className="flex rounded-lg bg-gray-100 p-0.5 text-xs">
               <button
                 onClick={() => setFilaTab("pendentes")}
@@ -230,7 +235,9 @@ export function OperacaoTab({
                     className="mt-1 block w-full text-left text-xs text-gray-500 hover:text-gray-700"
                   >
                     <span className="line-clamp-2">{b.motivo_transbordo}</span>
-                    <span className="text-[11px] text-claro-red">ver briefing →</span>
+                    <span className="inline-flex items-center gap-0.5 text-[11px] text-claro-red">
+                      ver briefing <ChevronRight className="h-3 w-3" strokeWidth={2.5} />
+                    </span>
                   </button>
                   <div className="mt-2 flex items-center justify-between">
                     <EstadoBadge estado={b.sessao_estado} resolvido={!!b.encerrado_em} />
@@ -255,7 +262,7 @@ export function OperacaoTab({
         {/* Sessões ativas */}
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-medium text-gray-700">Sessões ativas (contexto persistente, RF001)</h3>
+            <SectionTitle icone={Radio}>Sessões ativas (contexto persistente, RF001)</SectionTitle>
             <span className="text-[11px] text-gray-400">{sessoesFiltradas.length} de {sessoes.length}</span>
           </div>
           <div className="max-h-[28rem] space-y-2 overflow-y-auto">
@@ -264,7 +271,7 @@ export function OperacaoTab({
                 <div className="min-w-0">
                   <NomeCliente nome={s.cliente_nome} clienteId={s.cliente_id} onAbrir={onAbrirCliente} className="text-sm" />
                   <span className="ml-2 text-xs text-gray-400">
-                    {CANAL_META[s.canal || ""]?.icone} via {CANAL_META[s.canal || ""]?.label || s.canal || "?"}
+                    via <CanalTag canal={s.canal} />
                   </span>
                   {s.protocolo && <span className="ml-2 text-[11px] text-gray-300">· {s.protocolo}</span>}
                 </div>

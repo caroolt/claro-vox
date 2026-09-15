@@ -1,5 +1,14 @@
 import type { LucideIcon } from "lucide-react";
-import { ESTADO_META, TOM_META, TIPO_CLIENTE_META } from "./meta";
+import { CANAL_META, ESTADO_META, TOM_META, TIPO_CLIENTE_META } from "./meta";
+
+export function SectionTitle({ icone: Icone, children }: { icone: LucideIcon; children: React.ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-1.5 font-medium text-gray-700">
+      <Icone className="h-4 w-4 text-gray-400" strokeWidth={2} />
+      {children}
+    </h3>
+  );
+}
 
 export function KpiCard({
   label,
@@ -77,6 +86,17 @@ export function TipoClienteBadge({ tipo }: { tipo: string | null | undefined }) 
   return (
     <span className={`rounded-full px-2 py-0.5 text-[11px] ${m?.badge || "bg-gray-100 text-gray-600"}`}>
       {m?.label || tipo}
+    </span>
+  );
+}
+
+export function CanalTag({ canal, className = "" }: { canal: string | null | undefined; className?: string }) {
+  const m = CANAL_META[canal || ""];
+  const Icone = m?.icone;
+  return (
+    <span className={`inline-flex items-center gap-1 ${className}`}>
+      {Icone && <Icone className="h-3 w-3 shrink-0" strokeWidth={2} />}
+      {m?.label || canal || "?"}
     </span>
   );
 }
