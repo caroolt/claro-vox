@@ -1,6 +1,6 @@
-import { ArrowRightLeft, Gauge, MessageSquare, Radio, ScrollText } from "lucide-react";
+import { ArrowRightLeft, Gauge, MessageSquare, Radio, ScrollText, Smile } from "lucide-react";
 import type { AuditoriaEntry, Metrics } from "../../types";
-import { CAT_HEX, CompareBars, Meter, StackedBar, STATUS_HEX } from "../charts";
+import { CAT_HEX, DonutChart, Meter, RadialMeter, RankedBars, STATUS_HEX } from "../charts";
 import {
   CANAL_META,
   CANAL_ORDEM,
@@ -82,50 +82,64 @@ export function VisaoGeralTab({
       </section>
 
       <section>
-        <SecaoRotulo>Composição e satisfação</SecaoRotulo>
+        <SecaoRotulo>Composição das sessões</SecaoRotulo>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 lg:col-span-2">
-            <div className="mb-1 flex items-baseline justify-between gap-3">
-              <h4 className="text-sm font-medium text-gray-700">Composição das sessões</h4>
-              <span className="text-[11px] text-gray-400">clique num estado para abrir a Operação filtrada</span>
+          <Cartao titulo="Por estado" sub="clique numa fatia para abrir a Operação filtrada">
+            <div className="flex items-center gap-5">
+              <DonutChart segments={segmentosEstado} centerLabel="sessões" />
+              <div className="flex-1 space-y-1.5">
+                {segmentosEstado.map((seg) => (
+                  <button
+                    key={seg.key}
+                    onClick={() => seg.value > 0 && onEstadoClick(seg.key)}
+                    disabled={seg.value === 0}
+                    className={`flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs transition ${
+                      seg.value > 0 ? "hover:bg-claro-gray-light" : "opacity-40"
+                    }`}
+                  >
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: seg.color }} />
+                    <span className="flex-1 truncate text-gray-600">{seg.label}</span>
+                    <span className="font-semibold tabular-nums text-gray-800">{seg.value}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="divide-y divide-gray-100">
-              <DistBloco titulo="Por estado">
-                <StackedBar segments={segmentosEstado} onSelect={onEstadoClick} />
-              </DistBloco>
-              <DistBloco titulo="Por tom emocional">
-                <StackedBar segments={segmentosTom} emptyLabel="Nenhuma mensagem classificada ainda" />
-              </DistBloco>
-              <DistBloco titulo="Por canal">
-                <StackedBar segments={segmentosCanal} emptyLabel="Nenhuma sessão iniciada ainda" />
-              </DistBloco>
-            </div>
-          </div>
+          </Cartao>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <div className="mb-3 flex items-baseline justify-between gap-3">
-              <h4 className="text-sm font-medium text-gray-700">Satisfação (NPS)</h4>
-              <span className="text-[11px] text-gray-400">{totalAvaliacoes} avaliações</span>
-            </div>
-            <CompareBars
-              items={[
-                {
-                  key: "ia",
-                  label: "Assistente virtual (Vox)",
-                  value: metrics.nps.ia.media,
-                  color: CAT_HEX[0],
-                  vazio: metrics.nps.ia.respostas === 0,
-                  sub: `${metrics.nps.ia.respostas} resp. · índice ${sinal(metrics.nps.ia.indice)}`,
-                },
-                {
-                  key: "atendente",
-                  label: "Atendentes humanos",
-                  value: metrics.nps.atendente.media,
-                  color: STATUS_HEX.good,
-                  vazio: metrics.nps.atendente.respostas === 0,
-                  sub: `${metrics.nps.atendente.respostas} resp. · índice ${sinal(metrics.nps.atendente.indice)}`,
-                },
-              ]}
+          <Cartao titulo="Por tom emocional">
+            <RankedBars segments={segmentosTom} emptyLabel="Nenhuma mensagem classificada ainda" />
+          </Cartao>
+
+          <Cartao titulo="Por canal">
+            <RankedBars segments={segmentosCanal} emptyLabel="Nenhuma sessão iniciada ainda" />
+          </Cartao>
+        </div>
+      </section>
+
+      <section>
+        <SecaoRotulo>Satisfação (NPS)</SecaoRotulo>
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h4 className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+              <Smile className="h-4 w-4 text-gray-400" strokeWidth={2} />
+              Nota média, de 0 a 10
+            </h4>
+            <span className="text-[11px] text-gray-400">{totalAvaliacoes} avaliações</span>
+          </div>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <NpsGauge
+              titulo="Assistente virtual (Vox)"
+              cor={CAT_HEX[0]}
+              media={metrics.nps.ia.media}
+              respostas={metrics.nps.ia.respostas}
+              indice={metrics.nps.ia.indice}
+            />
+            <NpsGauge
+              titulo="Atendentes humanos"
+              cor={STATUS_HEX.good}
+              media={metrics.nps.atendente.media}
+              respostas={metrics.nps.atendente.respostas}
+              indice={metrics.nps.atendente.indice}
             />
           </div>
         </div>
@@ -173,6 +187,36 @@ export function VisaoGeralTab({
   );
 }
 
+function NpsGauge({
+  titulo,
+  cor,
+  media,
+  respostas,
+  indice,
+}: {
+  titulo: string;
+  cor: string;
+  media: number;
+  respostas: number;
+  indice: number;
+}) {
+  return (
+    <div className="flex items-center gap-4">
+      <RadialMeter value={media} max={10} color={cor} vazio={respostas === 0} />
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-gray-700">{titulo}</p>
+        {respostas === 0 ? (
+          <p className="text-xs text-gray-400">Sem respostas ainda</p>
+        ) : (
+          <p className="text-xs text-gray-400">
+            {respostas} resp. · índice {sinal(indice)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function formatarDataHora(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -190,10 +234,21 @@ function SecaoRotulo({ children }: { children: React.ReactNode }) {
   return <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{children}</h3>;
 }
 
-function DistBloco({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function Cartao({
+  titulo,
+  sub,
+  children,
+}: {
+  titulo: string;
+  sub?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="py-3 first:pt-0 last:pb-0">
-      <p className="mb-2 text-xs font-medium text-gray-500">{titulo}</p>
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h4 className="text-sm font-medium text-gray-700">{titulo}</h4>
+        {sub && <span className="text-[10px] text-gray-400">{sub}</span>}
+      </div>
       {children}
     </div>
   );
