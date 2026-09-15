@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { BookOpen, Download } from "lucide-react";
-import { civ } from "../../api";
-import type { AuditoriaEntry, Briefing, KnowledgeItem, Metrics, SessaoResumo, Usuario } from "../../types";
+import { civ, configuracoes as configuracoesApi } from "../../api";
+import type { AuditoriaEntry, Briefing, Configuracao, KnowledgeItem, Metrics, SessaoResumo, Usuario } from "../../types";
 import { useBriefingSocket } from "../../useBriefingSocket";
 import { FILTROS_VAZIOS, type FiltrosOperacao } from "./meta";
 import { exportarBriefingZip } from "./exportar";
@@ -12,18 +12,23 @@ import { ClienteDrawer } from "./ClienteDrawer";
 import { BriefingModal } from "./BriefingModal";
 import { SessionChatPanel } from "./SessionChatPanel";
 import { AtendentesTab } from "./AtendentesTab";
+import { FraudeTab } from "./FraudeTab";
+import { ConfiguracoesTab } from "./ConfiguracoesTab";
 import { Sidebar } from "./Sidebar";
 
-export type Aba = "geral" | "operacao" | "clientes" | "kb" | "atendentes";
+export type Aba = "geral" | "operacao" | "clientes" | "kb" | "atendentes" | "fraude" | "configuracoes";
 
 const ABAS_POR_ROLE: Record<Usuario["role"], { id: Aba; rotulo: string }[]> = {
-  // Admin vê todas as abas do Vox Briefing + a gestão de atendentes.
+  // Admin vê todas as abas do Vox Briefing + a gestão de atendentes, a
+  // detecção de fraude cross-canal e os parâmetros operacionais.
   admin: [
     { id: "geral", rotulo: "Visão geral" },
     { id: "operacao", rotulo: "Operação" },
     { id: "clientes", rotulo: "Clientes" },
     { id: "kb", rotulo: "Conhecimento" },
     { id: "atendentes", rotulo: "Atendentes" },
+    { id: "fraude", rotulo: "Fraude" },
+    { id: "configuracoes", rotulo: "Configurações" },
   ],
   // Atendente vê só o que precisa para o dia a dia — sem métricas do
   // negócio nem gestão de contas.
@@ -42,6 +47,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
   const [sessoes, setSessoes] = useState<SessaoResumo[]>([]);
   const [fila, setFila] = useState<Briefing[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [configuracoes, setConfiguracoes] = useState<Configuracao[]>([]);
   const [auditoria, setAuditoria] = useState<AuditoriaEntry[]>([]);
   const [kb, setKb] = useState<KnowledgeItem[]>([]);
   const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
@@ -58,18 +64,20 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
   async function carregarTudo() {
     // Métricas e auditoria (Visão geral) são exclusivas do admin — atendente
     // não tem permissão na CIV para essas rotas, então nem chamamos para essa role.
-    const [s, f, m, k, a] = await Promise.all([
+    const [s, f, m, k, a, cfg] = await Promise.all([
       civ.sessions(true),
       civ.handoffQueue(),
       usuario.role === "admin" ? civ.metrics() : Promise.resolve(null),
       civ.knowledge(),
       usuario.role === "admin" ? civ.auditoria() : Promise.resolve([]),
+      usuario.role === "admin" ? configuracoesApi.listar() : Promise.resolve([]),
     ]);
     setSessoes(s);
     setFila(f);
     setMetrics(m);
     setKb(k);
     setAuditoria(a);
+    setConfiguracoes(cfg);
     setAtualizadoEm(new Date());
   }
 
@@ -182,6 +190,9 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
             flash={flash}
             onEstadoClick={irParaEstado}
             auditoria={auditoria}
+            metaTransbordo={
+              configuracoes.find((c) => c.chave === "meta_transbordo_pct")?.valor ?? 25
+            }
           />
         )}
 
@@ -221,6 +232,10 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
         )}
 
           {aba === "atendentes" && <AtendentesTab usuarioLogadoId={usuario.id} />}
+
+          {aba === "fraude" && <FraudeTab onAbrirCliente={setClienteDrawerId} />}
+
+          {aba === "configuracoes" && <ConfiguracoesTab />}
         </div>
       </div>
 

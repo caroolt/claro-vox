@@ -17,14 +17,18 @@ const drafts = new Map<string, Draft>();
 
 // -------- 1) Início do Cold Start (cliente novo, sem sessão) --------
 coldstartRouter.post("/start", h(async (req, res) => {
-  const { canal, canal_conversa_id, mensagem_inicial } = req.body || {};
+  const { canal, canal_conversa_id, mensagem_inicial, dispositivo_id, ip_origem } = req.body || {};
   if (!canal || !canal_conversa_id) {
     return res.status(400).json({ erro: "canal e canal_conversa_id são obrigatórios" });
   }
   const canalId = await getOrCreateCanal(canal);
+  // dispositivo_id/ip_origem: sinais cross-identidade da camada de
+  // detecção de fraude (Regra B) — ligam clientes de CPFs diferentes que
+  // compartilham o mesmo aparelho ou a mesma origem de rede.
   const sessao = await pool.query(
-    `INSERT INTO sessao (canal_origem_id, estado, cold_start_etapa) VALUES ($1, 'COLD_START', 'pergunta_cliente') RETURNING id, estado`,
-    [canalId]
+    `INSERT INTO sessao (canal_origem_id, estado, cold_start_etapa, dispositivo_id, ip_origem)
+     VALUES ($1, 'COLD_START', 'pergunta_cliente', $2, $3) RETURNING id, estado`,
+    [canalId, dispositivo_id || null, ip_origem || null]
   );
   const sessaoId = sessao.rows[0].id;
   drafts.set(sessaoId, { canal, canalConversaId: canal_conversa_id, etapa: "pergunta_cliente" });
@@ -153,7 +157,7 @@ coldstartRouter.post("/answer", h(async (req, res) => {
 
 // -------- 3) Reconhecimento automático ao trocar de canal (RF004) --------
 coldstartRouter.post("/reconhecer", h(async (req, res) => {
-  const { canal, cpf } = req.body || {};
+  const { canal, cpf, dispositivo_id, ip_origem } = req.body || {};
   if (!canal || !cpf) return res.status(400).json({ erro: "canal e cpf são obrigatórios" });
 
   const cpfHash = hashCpf(cpf);
@@ -179,8 +183,9 @@ coldstartRouter.post("/reconhecer", h(async (req, res) => {
   // mesmo reconhecendo o cliente e trazendo o contexto anterior (RF004).
   const protocolo = await gerarProtocolo(pool);
   const novaSessao = await pool.query(
-    `INSERT INTO sessao (cliente_id, canal_origem_id, estado, protocolo) VALUES ($1, $2, 'ATIVA', $3) RETURNING id`,
-    [cliente.id, canalId, protocolo]
+    `INSERT INTO sessao (cliente_id, canal_origem_id, estado, protocolo, dispositivo_id, ip_origem)
+     VALUES ($1, $2, 'ATIVA', $3, $4, $5) RETURNING id`,
+    [cliente.id, canalId, protocolo, dispositivo_id || null, ip_origem || null]
   );
   const sessaoId = novaSessao.rows[0].id;
   const contextoRes = await pool.query(

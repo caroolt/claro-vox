@@ -37,6 +37,24 @@ function uid() {
   return Math.random().toString(36).slice(2);
 }
 
+// Identificador do "aparelho" simulado — gerado uma vez e persistido no
+// navegador, como o app/site real faria. É o sinal cross-identidade que a
+// camada de detecção de fraude usa para ligar clientes de CPFs diferentes
+// que compartilham o mesmo dispositivo (Regra B, ver civ/schema.sql).
+function obterDispositivoId(): string {
+  const chave = "vox_dispositivo_id";
+  try {
+    let id = localStorage.getItem(chave);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(chave, id);
+    }
+    return id;
+  } catch {
+    return uid();
+  }
+}
+
 export function ChatSimulator() {
   const [canal, setCanal] = useState<Canal>("whatsapp");
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
@@ -83,7 +101,7 @@ export function ChatSimulator() {
   async function iniciarConversa() {
     setCarregando(true);
     try {
-      const r = await orchestrator.coldstartStart(canal, `${canal}-demo-${uid()}`);
+      const r = await orchestrator.coldstartStart(canal, `${canal}-demo-${uid()}`, undefined, obterDispositivoId());
       setSessaoId(r.sessao_id);
       setFase("coldstart");
       add("vox", r.proxima_pergunta);
@@ -145,7 +163,7 @@ export function ChatSimulator() {
     if (!cpfTroca.trim()) return;
     setCarregando(true);
     try {
-      const r = await orchestrator.coldstartReconhecer(canal, cpfTroca.trim());
+      const r = await orchestrator.coldstartReconhecer(canal, cpfTroca.trim(), obterDispositivoId());
       if (r.reconhecido) {
         setSessaoId(r.sessao_id);
         setClienteNome(r.cliente?.nome || null);

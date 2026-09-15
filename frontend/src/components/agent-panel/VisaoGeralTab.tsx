@@ -12,21 +12,24 @@ import {
 } from "./meta";
 import { KpiCard } from "./ui";
 
-const META_TRANSBORDO = 25;
-
 export function VisaoGeralTab({
   metrics,
   sessoesAtivas,
   flash,
   onEstadoClick,
   auditoria,
+  metaTransbordo,
 }: {
   metrics: Metrics | null;
   sessoesAtivas: number;
   flash: boolean;
   onEstadoClick: (estado: string) => void;
   auditoria: AuditoriaEntry[];
+  // Meta (%) configurável na aba "Configurações" — 25 é só o valor
+  // inicial de fallback antes da configuração carregar.
+  metaTransbordo?: number;
 }) {
+  const META_TRANSBORDO = metaTransbordo ?? 25;
   if (!metrics) {
     return <p className="text-sm text-gray-400">Carregando indicadores…</p>;
   }
