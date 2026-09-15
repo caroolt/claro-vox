@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import contratacao
 import llm
 import nlu
 from rag import buscar_conhecimento
@@ -193,6 +194,8 @@ async def processar_mensagem(body: MensagemIn):
     nome_cliente = (contexto.get("cliente") or {}).get("nome")
     ultima_intencao = contexto.get("ultima_intencao") or {}
     categoria_anterior = ultima_intencao.get("categoria") if isinstance(ultima_intencao, dict) else None
+    fluxo_ativo = contexto.get("fluxo_ativo")
+    fluxo_dados = contexto.get("fluxo_dados") or {}
 
     # 1) registra a mensagem do cliente
     msg_cliente = await _civ_post(
@@ -200,54 +203,90 @@ async def processar_mensagem(body: MensagemIn):
         {"remetente": "cliente", "canal": body.canal, "conteudo": body.conteudo},
     )
 
-    # 2) classificação (LLM real se configurado, senão motor de regras) e
-    # busca de conhecimento (RAG). Antes só era consultada para portfólio e
-    # dúvida geral; agora é consultada sempre, para qualquer categoria poder
-    # citar um trecho real da base em vez de repetir a mesma frase fixa (a
-    # própria busca já retorna vazio quando não há nada relevante).
-    categoria_provisoria = nlu.classificar(body.conteudo).categoria
-    trechos = await buscar_conhecimento(CIV_URL, body.conteudo)
+    # 2) classificação (LLM real se configurado, senão motor de regras) — a
+    # menos que já exista (ou esteja começando agora) um fluxo guiado de
+    # contratação de plano, que é tratado à parte (determinístico, sem LLM
+    # nem RAG, já que é uma coleta estruturada de dados — nome/nascimento/CPF).
+    #
+    # categoria_provisoria é a classificação "fresca" (sem levar em conta a
+    # categoria_anterior) — usada tanto para detectar o início do fluxo de
+    # contratação quanto, mais abaixo, para corrigir o texto de resposta
+    # quando o assunto muda sem palavra-chave nova (ver comentário adiante).
+    intencao_fresca = nlu.classificar(body.conteudo)
+    categoria_provisoria = intencao_fresca.categoria
 
-    llm_resultado = llm.classificar_e_responder(body.conteudo, contexto, trechos)
+    resultado_fluxo = None
+    if fluxo_ativo == contratacao.FLUXO:
+        resultado_fluxo = await contratacao.continuar(CIV_URL, sessao_id, fluxo_dados, body.conteudo)
+    elif categoria_provisoria == "venda/contratar_plano":
+        resultado_fluxo = contratacao.iniciar(nome_cliente)
 
-    if llm_resultado:
-        categoria = llm_resultado.get("categoria", categoria_provisoria)
-        tom = llm_resultado.get("tom_emocional", "neutro")
-        resposta_texto = llm_resultado.get("resposta") or _resposta_template(categoria, tom, trechos, nome_cliente)
-        requer_transbordo = bool(llm_resultado.get("requer_transbordo", False))
-        motivo_transbordo = "classificado pelo LLM como necessitando atendimento humano" if requer_transbordo else None
-        fonte_classificacao = "llm"
-    else:
-        intencao = nlu.classificar(body.conteudo, categoria_anterior)
-        categoria = intencao.categoria
-        tom = intencao.tom_emocional
-        requer_transbordo = intencao.requer_transbordo
-        motivo_transbordo = intencao.motivo_transbordo
-        # A "continuidade" (ver nlu.classificar) assume que uma mensagem sem
-        # palavra-chave nova segue o mesmo assunto anterior — ótimo quando o
-        # cliente insiste no mesmo problema, mas erra quando ele muda de
-        # assunto sem usar as palavras que o motor de regras reconhece: a
-        # categoria antiga gruda e o texto de resposta acaba com a pergunta
-        # de fechamento do assunto errado. Quando isso acontece (a
-        # classificação fresca não viu nada de novo, mas a busca de
-        # conhecimento achou algo relevante pro que foi perguntado agora),
-        # usa a categoria fresca (genérica) só na escolha do texto. A
-        # categoria "grudenta" continua valendo pra decisão de transbordo e
-        # pro que fica registrado como intenção da sessão, que é intencional.
-        categoria_para_resposta = categoria
-        if categoria_provisoria == "atendimento/duvida_geral" and categoria != categoria_provisoria and trechos:
-            categoria_para_resposta = categoria_provisoria
-        resposta_texto = _resposta_template(categoria_para_resposta, tom, trechos, nome_cliente)
-        fonte_classificacao = "regras"
-
-    # Sempre que o transbordo é acionado, o Vox avisa o cliente antes de
-    # transferir — mensagem fixa, para deixar claro que a partir dali um
-    # atendente humano assume a conversa (RF007-009).
-    if requer_transbordo:
-        resposta_texto = (
-            "Não consigo te ajudar com isso. Estou te transferindo para um atendente! "
-            "Antes disso, de 0 a 10, o quanto você recomendaria o atendimento do assistente virtual?"
+    trechos = []
+    llm_resultado = None
+    if resultado_fluxo is not None:
+        categoria = "venda/contratar_plano"
+        tom = intencao_fresca.tom_emocional
+        resposta_texto = resultado_fluxo.resposta
+        requer_transbordo = resultado_fluxo.requer_transbordo
+        motivo_transbordo = resultado_fluxo.motivo_transbordo
+        fonte_classificacao = "fluxo_contratacao"
+        # Persiste em que etapa o fluxo está (ou encerra, se concluído/abortado).
+        await _civ_post(
+            f"/v1/sessions/{sessao_id}/fluxo",
+            {
+                "fluxo_ativo": contratacao.FLUXO if resultado_fluxo.fluxo_dados else None,
+                "fluxo_dados": resultado_fluxo.fluxo_dados,
+            },
         )
+    else:
+        # Busca de conhecimento (RAG) — consultada sempre, para qualquer
+        # categoria poder citar um trecho real da base em vez de repetir a
+        # mesma frase fixa (a própria busca já retorna vazio quando não há
+        # nada relevante).
+        trechos = await buscar_conhecimento(CIV_URL, body.conteudo)
+
+        llm_resultado = llm.classificar_e_responder(body.conteudo, contexto, trechos)
+
+        if llm_resultado:
+            categoria = llm_resultado.get("categoria", categoria_provisoria)
+            tom = llm_resultado.get("tom_emocional", "neutro")
+            resposta_texto = llm_resultado.get("resposta") or _resposta_template(categoria, tom, trechos, nome_cliente)
+            requer_transbordo = bool(llm_resultado.get("requer_transbordo", False))
+            motivo_transbordo = "classificado pelo LLM como necessitando atendimento humano" if requer_transbordo else None
+            fonte_classificacao = "llm"
+        else:
+            intencao = nlu.classificar(body.conteudo, categoria_anterior)
+            categoria = intencao.categoria
+            tom = intencao.tom_emocional
+            requer_transbordo = intencao.requer_transbordo
+            motivo_transbordo = intencao.motivo_transbordo
+            # A "continuidade" (ver nlu.classificar) assume que uma mensagem sem
+            # palavra-chave nova segue o mesmo assunto anterior — ótimo quando o
+            # cliente insiste no mesmo problema, mas erra quando ele muda de
+            # assunto sem usar as palavras que o motor de regras reconhece: a
+            # categoria antiga gruda e o texto de resposta acaba com a pergunta
+            # de fechamento do assunto errado. Quando isso acontece (a
+            # classificação fresca não viu nada de novo, mas a busca de
+            # conhecimento achou algo relevante pro que foi perguntado agora),
+            # usa a categoria fresca (genérica) só na escolha do texto. A
+            # categoria "grudenta" continua valendo pra decisão de transbordo e
+            # pro que fica registrado como intenção da sessão, que é intencional.
+            categoria_para_resposta = categoria
+            if categoria_provisoria == "atendimento/duvida_geral" and categoria != categoria_provisoria and trechos:
+                categoria_para_resposta = categoria_provisoria
+            resposta_texto = _resposta_template(categoria_para_resposta, tom, trechos, nome_cliente)
+            fonte_classificacao = "regras"
+
+        # Sempre que o transbordo é acionado fora de um fluxo guiado, o Vox
+        # avisa o cliente antes de transferir — mensagem fixa, para deixar
+        # claro que a partir dali um atendente humano assume a conversa
+        # (RF007-009). Dentro do fluxo de contratação a mensagem já é
+        # específica (explica a divergência de dados), então não é sobrescrita.
+        if requer_transbordo:
+            resposta_texto = (
+                "Não consigo te ajudar com isso. Estou te transferindo para um atendente! "
+                "Antes disso, de 0 a 10, o quanto você recomendaria o atendimento do assistente virtual?"
+            )
 
     # 3) registra a resposta do Vox
     msg_vox = await _civ_post(

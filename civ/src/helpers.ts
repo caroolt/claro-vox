@@ -20,3 +20,28 @@ export async function getOrCreateCanal(nome: string, tipoAdapter = "generic"): P
 export function maskCpfHash(cpfHash: string | null): string {
   return cpfHash ? "***hash***" : "";
 }
+
+// Protocolo de atendimento — identifica a sessão/chamada para o cliente,
+// independente do canal (é o número que ele guarda/anota). Formato curto e
+// falável por telefone: VX-AAAAMMDD-XXXX (4 caracteres alfanuméricos,
+// sem 0/O/1/I para não confundir ao ditar).
+const ALFABETO_PROTOCOLO = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+function sufixoAleatorio(tamanho = 4): string {
+  let s = "";
+  for (let i = 0; i < tamanho; i++) {
+    s += ALFABETO_PROTOCOLO[Math.floor(Math.random() * ALFABETO_PROTOCOLO.length)];
+  }
+  return s;
+}
+
+export async function gerarProtocolo(pool: { query: (sql: string, params: unknown[]) => Promise<{ rows: unknown[] }> }): Promise<string> {
+  const data = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const protocolo = `VX-${data}-${sufixoAleatorio()}`;
+    const existente = await pool.query("SELECT 1 FROM sessao WHERE protocolo = $1", [protocolo]);
+    if (!existente.rows.length) return protocolo;
+  }
+  // Extremamente improvável (colisão 5x seguidas) — cai para um sufixo maior.
+  return `VX-${data}-${sufixoAleatorio(8)}`;
+}

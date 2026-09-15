@@ -34,6 +34,7 @@ export function ChatSimulator() {
   const [sessaoId, setSessaoId] = useState<string | null>(null);
   const [clienteNome, setClienteNome] = useState<string | null>(null);
   const [clienteId, setClienteId] = useState<string | null>(null);
+  const [protocolo, setProtocolo] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [mostrarTrocaCanal, setMostrarTrocaCanal] = useState(false);
   const [cpfTroca, setCpfTroca] = useState("");
@@ -95,6 +96,7 @@ export function ChatSimulator() {
           setFase("ativa");
           setClienteNome(r.cliente?.nome || null);
           setClienteId(r.cliente?.id || null);
+          setProtocolo(r.protocolo || null);
           add("vox", r.mensagem);
         } else {
           add("vox", r.proxima_pergunta);
@@ -137,6 +139,7 @@ export function ChatSimulator() {
         setSessaoId(r.sessao_id);
         setClienteNome(r.cliente?.nome || null);
         setClienteId(r.cliente?.id || null);
+        setProtocolo(r.protocolo || null);
         add("sistema", `📡 Reconhecido automaticamente no canal ${canal} (RF004) — contexto trazido do canal anterior: ${r.canal_anterior || "nenhum"}.`);
         add("vox", r.mensagem);
       } else {
@@ -173,6 +176,7 @@ export function ChatSimulator() {
     setSessaoId(null);
     setClienteNome(null);
     setClienteId(null);
+    setProtocolo(null);
     setMostrarTrocaCanal(false);
     setAtendimentoHumano(false);
   }
@@ -198,6 +202,11 @@ export function ChatSimulator() {
         </div>
         <div className="flex items-center gap-2">
           {clienteNome && <span className="text-sm text-gray-500">👤 {clienteNome}</span>}
+          {protocolo && (
+            <span className="rounded-full bg-claro-red-light px-2.5 py-1 text-xs font-medium text-claro-red-dark">
+              protocolo {protocolo}
+            </span>
+          )}
           {clienteId && (
             <button onClick={excluirDados} className="text-xs text-gray-400 hover:text-claro-red underline">
               Excluir meus dados (LGPD)

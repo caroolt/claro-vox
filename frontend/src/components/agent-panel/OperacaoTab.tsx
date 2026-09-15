@@ -223,6 +223,7 @@ export function OperacaoTab({
                     />
                     <TomBadge tom={b.tom_emocional} />
                   </div>
+                  {b.protocolo && <p className="mt-0.5 text-[11px] text-gray-400">protocolo {b.protocolo}</p>}
                   <AlertasCliente alerta={b.cliente_id ? alertasPorCliente[b.cliente_id] : undefined} />
                   <button
                     onClick={() => onAbrirBriefing(b)}
@@ -265,6 +266,7 @@ export function OperacaoTab({
                   <span className="ml-2 text-xs text-gray-400">
                     {CANAL_META[s.canal || ""]?.icone} via {CANAL_META[s.canal || ""]?.label || s.canal || "?"}
                   </span>
+                  {s.protocolo && <span className="ml-2 text-[11px] text-gray-300">· {s.protocolo}</span>}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <EstadoBadge estado={s.estado} />

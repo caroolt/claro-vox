@@ -191,3 +191,31 @@ claro-vox-app/
 | RNF (LGPD art. 18) | Direito de exclusão | `civ/src/routes/clientes.ts` |
 | RNF (segurança do CPF) | Pseudonimização via HMAC-SHA-256 | `civ/src/crypto.ts` |
 | RNF (autenticação do painel) | Login + MFA (TOTP) e RBAC (admin/atendente) no Vox Briefing | `civ/src/auth.ts`, `civ/src/middleware/auth.ts`, `civ/src/routes/auth.ts`, `civ/src/routes/usuarios.ts` |
+| RNF (protocolo de atendimento) | Cada sessão/chamada ganha um protocolo único, informado ao cliente logo após o Cold Start | `civ/src/helpers.ts` (`gerarProtocolo`), `civ/src/routes/coldstart.ts` |
+| RF (contratação simulada de plano) | Fluxo guiado no chat (pré-pago/controle/pós) que confirma nome+nascimento+CPF (cliente já cadastrado) ou coleta os mesmos dados (cliente novo) antes de confirmar | `orchestrator/contratacao.py`, `civ/src/routes/contratos.ts` |
+
+### Protocolo de atendimento
+
+Assim que o Cold Start termina (sessão vira `ATIVA`) — ou quando o cliente é
+reconhecido ao trocar de canal (RF004) — o Vox gera e informa um
+**protocolo** (`VX-AAAAMMDD-XXXX`) logo na mensagem de boas-vindas. Cada
+sessão/chamada tem o seu próprio protocolo, independente do canal, e ele
+aparece também no Painel do Atendente (fila de transbordo, sessões ativas,
+briefing e histórico do cliente).
+
+### Contratação simulada de plano
+
+Quando o cliente demonstra intenção de compra no chat (ex.: "quero
+contratar um plano", "quero ativar uma linha"), o Vox entra num fluxo
+guiado, uma pergunta por vez: tipo de plano (Pré-pago/Controle/Pós-pago),
+nome completo, data de nascimento e CPF.
+
+- **Cliente já cadastrado**: os dados digitados precisam **conferir** com o
+  cadastro existente (nome e CPF) — se não conferirem, a contratação é
+  recusada e a sessão vai para transbordo (verificação de identidade por um
+  atendente humano), em vez de simplesmente seguir em frente.
+- **Cliente novo (prospecção)**: os mesmos dados completam o cadastro e o
+  promovem para cliente ativo (KYC simplificado do MVP).
+
+Ao final, o Vox confirma a contratação e devolve o protocolo da própria
+sessão como identificador da solicitação.

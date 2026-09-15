@@ -42,6 +42,16 @@ REGRAS = [
     ("atendimento/alterar_plano", [["mudar de plano"], ["trocar", "plano"], ["upgrade"], ["downgrade"]], False),
     ("venda/cancelamento", [["cancelar"], ["quero sair"], ["encerrar", "contrato"]], False),
     ("atendimento/negociar_divida", [["negociar", "divida"], ["estou devendo"], ["em atraso"]], False),
+    # Checada antes de "consulta_portfolio" (que também casaria em "plano") —
+    # intenção de compra de verdade, não só curiosidade sobre os planos.
+    (
+        "venda/contratar_plano",
+        [
+            ["contratar"], ["quero assinar"], ["ativar", "plano"], ["habilitar", "linha"],
+            ["quero um chip"], ["quero uma linha"], ["fazer um plano novo"], ["adquirir", "plano"],
+        ],
+        False,
+    ),
     ("venda/consulta_portfolio", [["plano"], ["planos"], ["pacote"], ["gb"], ["oferta"], ["promocao"]], False),
     ("atendimento/atendente_humano", [["atendente"], ["humano"], ["pessoa de verdade"], ["falar com alguem"], ["supervisor"]], True),
 ]

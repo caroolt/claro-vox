@@ -142,7 +142,7 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
     ),
     pool.query(
       `
-      SELECT s.id, s.estado, s.criado_em, s.atualizado_em,
+      SELECT s.id, s.estado, s.criado_em, s.atualizado_em, s.protocolo,
              ca.nome AS canal, ctx.ultima_intencao, ctx.jornada_status
       FROM sessao s
       LEFT JOIN canal ca ON ca.id = s.canal_origem_id

@@ -185,6 +185,7 @@ export function ClienteDrawer({
                       <div className="mt-1 flex items-center justify-between gap-2">
                         <span className="text-[11px] text-gray-400">
                           {fmtDataHora(s.criado_em)} → {fmtDataHora(s.atualizado_em)}
+                          {s.protocolo && <> · {s.protocolo}</>}
                         </span>
                         <div className="flex shrink-0 items-center gap-1.5">
                           <button

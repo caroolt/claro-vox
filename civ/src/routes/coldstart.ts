@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { pool, audit } from "../db";
 import { hashCpf, maskCpf } from "../crypto";
-import { getOrCreateCanal } from "../helpers";
+import { getOrCreateCanal, gerarProtocolo } from "../helpers";
 import { cacheSessionContext } from "../redisClient";
 import { broadcast } from "../ws";
 import { h } from "../asyncHandler";
@@ -108,7 +108,14 @@ coldstartRouter.post("/answer", h(async (req, res) => {
       await pool.query(`INSERT INTO preferencia_acessibilidade (cliente_id) VALUES ($1)`, [clienteId]);
     }
     draft.nome = nomeFinal;
-    await pool.query(`UPDATE sessao SET cliente_id = $1, estado = 'ATIVA', cold_start_etapa = NULL, atualizado_em = now() WHERE id = $2`, [clienteId, sessao_id]);
+    // Cada sessão/chamada ganha o seu próprio protocolo de atendimento —
+    // é o número que o cliente guarda para identificar esse contato,
+    // independente do canal.
+    const protocolo = await gerarProtocolo(pool);
+    await pool.query(
+      `UPDATE sessao SET cliente_id = $1, estado = 'ATIVA', cold_start_etapa = NULL, protocolo = $2, atualizado_em = now() WHERE id = $3`,
+      [clienteId, protocolo, sessao_id]
+    );
     const contextoRes = await pool.query(
       `INSERT INTO contexto (sessao_id, canal_atual, jornada_status) VALUES ($1, $2, 'EM_ANDAMENTO') RETURNING *`,
       [sessao_id, draft.canal]
@@ -118,20 +125,24 @@ coldstartRouter.post("/answer", h(async (req, res) => {
     // A mensagem de boas-vindas reflete o que de fato aconteceu no
     // cadastro (RF011): reconhecimento de conta existente, primeiro
     // cadastro como cliente ativo, ou cadastro na base de prospecção —
-    // "encontrei sua conta" só faz sentido no primeiro caso.
-    const boasVindas = clienteReconhecido
-      ? `Encontrei sua conta, ${draft.nome}. Como posso te ajudar hoje?`
-      : draft.jaCliente
-        ? `Prazer, ${draft.nome}! Vou guardar seus dados para os próximos contatos. Como posso te ajudar hoje?`
-        : `Cadastro criado, ${draft.nome}! Como posso te ajudar hoje?`;
+    // "encontrei sua conta" só faz sentido no primeiro caso. Sempre
+    // informa o protocolo desta sessão logo no início do atendimento.
+    const boasVindas =
+      (clienteReconhecido
+        ? `Encontrei sua conta, ${draft.nome}. Como posso te ajudar hoje?`
+        : draft.jaCliente
+          ? `Prazer, ${draft.nome}! Vou guardar seus dados para os próximos contatos. Como posso te ajudar hoje?`
+          : `Cadastro criado, ${draft.nome}! Como posso te ajudar hoje?`) +
+      ` Seu protocolo de atendimento é ${protocolo} — guarde esse número.`;
     await pool.query(`INSERT INTO mensagem (sessao_id, canal_id, remetente, conteudo) VALUES ($1, $2, 'vox', $3)`, [sessao_id, canalId, boasVindas]);
     drafts.delete(sessao_id);
     await audit("civ", "coldstart.completo", sessao_id);
-    broadcast("session.updated", { sessao_id, estado: "ATIVA", cliente_id: clienteId });
+    broadcast("session.updated", { sessao_id, estado: "ATIVA", cliente_id: clienteId, protocolo });
 
     return res.json({
       sessao_id,
       estado: "ATIVA",
+      protocolo,
       mensagem: boasVindas,
       cliente: { id: clienteId, nome: draft.nome, tipo_cliente: tipoCliente, cpf_mascarado: draft.jaCliente ? maskCpf(identificador) : null },
     });
@@ -164,9 +175,12 @@ coldstartRouter.post("/reconhecer", h(async (req, res) => {
   const historico = anterior.rows[0]?.historico_resumido || null;
 
   const canalId = await getOrCreateCanal(canal);
+  // Nova chamada/sessão — troca de canal ganha o seu próprio protocolo,
+  // mesmo reconhecendo o cliente e trazendo o contexto anterior (RF004).
+  const protocolo = await gerarProtocolo(pool);
   const novaSessao = await pool.query(
-    `INSERT INTO sessao (cliente_id, canal_origem_id, estado) VALUES ($1, $2, 'ATIVA') RETURNING id`,
-    [cliente.id, canalId]
+    `INSERT INTO sessao (cliente_id, canal_origem_id, estado, protocolo) VALUES ($1, $2, 'ATIVA', $3) RETURNING id`,
+    [cliente.id, canalId, protocolo]
   );
   const sessaoId = novaSessao.rows[0].id;
   const contextoRes = await pool.query(
@@ -176,17 +190,19 @@ coldstartRouter.post("/reconhecer", h(async (req, res) => {
   );
   await cacheSessionContext(sessaoId, contextoRes.rows[0]);
 
-  const mensagem = canalAnterior && canalAnterior !== canal
-    ? `Olá de novo, ${cliente.nome}! Quer continuar de onde paramos ou tem algo novo?`
-    : `Olá, ${cliente.nome}! Como posso ajudar?`;
+  const mensagem =
+    (canalAnterior && canalAnterior !== canal
+      ? `Olá de novo, ${cliente.nome}! Quer continuar de onde paramos ou tem algo novo?`
+      : `Olá, ${cliente.nome}! Como posso ajudar?`) + ` Protocolo deste atendimento: ${protocolo}.`;
   await pool.query(`INSERT INTO mensagem (sessao_id, canal_id, remetente, conteudo) VALUES ($1, $2, 'vox', $3)`, [sessaoId, canalId, mensagem]);
   await audit("civ", "coldstart.reconhecido", sessaoId);
-  broadcast("session.updated", { sessao_id: sessaoId, estado: "ATIVA", cliente_id: cliente.id, handoff_canal: true });
+  broadcast("session.updated", { sessao_id: sessaoId, estado: "ATIVA", cliente_id: cliente.id, handoff_canal: true, protocolo });
 
   res.json({
     reconhecido: true,
     sessao_id: sessaoId,
     estado: "ATIVA",
+    protocolo,
     mensagem,
     cliente: { id: cliente.id, nome: cliente.nome, tipo_cliente: cliente.tipo_cliente },
     contexto: contextoRes.rows[0],
