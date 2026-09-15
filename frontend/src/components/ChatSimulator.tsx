@@ -12,7 +12,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { civ, orchestrator } from "../api";
-import logoClaroVox from "../assets/claro-vox-logo.png";
 import type { Canal } from "../types";
 import { useBriefingSocket } from "../useBriefingSocket";
 
@@ -123,7 +122,7 @@ export function ChatSimulator() {
         const meta = `intenção: ${r.categoria} · tom: ${r.tom_emocional}${r.fonte_classificacao === "llm" ? " · classificado pelo Claude" : ""}`;
         add("vox", r.resposta, meta, r.transbordo ? { alvo: "ia", briefingId: r.briefing_id } : undefined);
         if (r.transbordo) {
-          add("sistema", `🔁 Transbordo acionado — briefing #${String(r.briefing_id).slice(0, 8)} enviado ao painel do atendente (Vox Briefing).`);
+          add("sistema", `🔁 Transbordo acionado: briefing #${String(r.briefing_id).slice(0, 8)} enviado ao painel do atendente (Vox Briefing).`);
         }
       }
     } catch (e: any) {
@@ -152,10 +151,10 @@ export function ChatSimulator() {
         setClienteNome(r.cliente?.nome || null);
         setClienteId(r.cliente?.id || null);
         setProtocolo(r.protocolo || null);
-        add("sistema", `📡 Reconhecido automaticamente no canal ${canal} (RF004) — contexto trazido do canal anterior: ${r.canal_anterior || "nenhum"}.`);
+        add("sistema", `📡 Reconhecido automaticamente no canal ${canal} (RF004), trazendo o contexto do canal anterior: ${r.canal_anterior || "nenhum"}.`);
         add("vox", r.mensagem);
       } else {
-        add("sistema", "CPF não encontrado — iniciando um novo atendimento (Cold Start) neste canal.");
+        add("sistema", "CPF não encontrado. Iniciando um novo atendimento (Cold Start) neste canal.");
         setFase("inicio");
         setSessaoId(null);
       }
@@ -267,7 +266,7 @@ export function ChatSimulator() {
               <Bot className="h-4 w-4 text-claro-red" strokeWidth={2} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">Vox — Assistente Claro</p>
+              <p className="truncate text-sm font-semibold">Vox · Assistente Claro</p>
               <p className="flex items-center gap-1.5 text-[11px] text-white/50">
                 <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
                 <canalAtual.icone className="h-3 w-3" strokeWidth={2} />
@@ -287,8 +286,8 @@ export function ChatSimulator() {
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-claro-gray-light px-4 py-4">
             {bubbles.length === 0 && fase === "inicio" && (
               <div className="mt-16 text-center text-gray-400">
-                <span className="mb-3 inline-flex items-center rounded-xl bg-claro-black px-4 py-2.5">
-                  <img src={logoClaroVox} alt="Claro Vox" className="h-8 w-auto" />
+                <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-claro-red-light">
+                  <Bot className="h-6 w-6 text-claro-red" strokeWidth={2} />
                 </span>
                 <p className="mb-2 text-lg text-gray-600">Simulador de atendimento</p>
                 <p className="mb-6 px-6 text-sm">

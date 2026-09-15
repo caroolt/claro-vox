@@ -167,13 +167,13 @@ export async function exportarConversaPdf(sessaoId: string) {
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
-  doc.text("Claro Vox — Transcrição de atendimento", margem, y);
+  doc.text("Claro Vox · Transcrição de atendimento", margem, y);
   y += 20;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(120);
-  doc.text("Documento anonimizado — dados pessoais do cliente removidos (LGPD).", margem, y);
+  doc.text("Documento anonimizado: dados pessoais do cliente removidos (LGPD).", margem, y);
   y += 22;
   doc.setTextColor(20);
 

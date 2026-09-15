@@ -133,7 +133,7 @@ coldstartRouter.post("/answer", h(async (req, res) => {
         : draft.jaCliente
           ? `Prazer, ${draft.nome}! Vou guardar seus dados para os próximos contatos. Como posso te ajudar hoje?`
           : `Cadastro criado, ${draft.nome}! Como posso te ajudar hoje?`) +
-      ` Seu protocolo de atendimento é ${protocolo} — guarde esse número.`;
+      ` Seu protocolo de atendimento é ${protocolo}, guarde esse número.`;
     await pool.query(`INSERT INTO mensagem (sessao_id, canal_id, remetente, conteudo) VALUES ($1, $2, 'vox', $3)`, [sessao_id, canalId, boasVindas]);
     drafts.delete(sessao_id);
     await audit("civ", "coldstart.completo", sessao_id);

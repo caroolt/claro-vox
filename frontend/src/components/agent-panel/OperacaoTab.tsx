@@ -255,7 +255,7 @@ export function OperacaoTab({
         {/* Sessões ativas */}
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-medium text-gray-700">Sessões ativas (contexto persistente — RF001)</h3>
+            <h3 className="font-medium text-gray-700">Sessões ativas (contexto persistente, RF001)</h3>
             <span className="text-[11px] text-gray-400">{sessoesFiltradas.length} de {sessoes.length}</span>
           </div>
           <div className="max-h-[28rem] space-y-2 overflow-y-auto">
@@ -287,7 +287,7 @@ export function OperacaoTab({
               <p className="text-sm text-gray-400">
                 {filtrosAtivos(filtros)
                   ? "Nenhuma sessão bate com os filtros."
-                  : 'Nenhuma sessão ativa — inicie uma conversa na aba "Simulador".'}
+                  : 'Nenhuma sessão ativa. Inicie uma conversa na aba "Simulador".'}
               </p>
             )}
           </div>

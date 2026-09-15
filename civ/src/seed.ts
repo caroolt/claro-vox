@@ -314,7 +314,7 @@ function sessaoCobrancaFernanda(diasAtras: number, resolvida: boolean, numeroCha
     briefing: {
       motivo_transbordo: "cliente demonstrou comportamento hostil (xingamento/ofensa) na mensagem",
       tom_emocional: "hostil",
-      resumo_jornada: `Cliente Fernanda Alves — intenção: atendimento/cobranca_contestada. Última mensagem: "${reclamacao}".`,
+      resumo_jornada: `Cliente Fernanda Alves, intenção: atendimento/cobranca_contestada. Última mensagem: "${reclamacao}".`,
       sugestao_resolucao: "Verificar histórico de faturas do cliente e cobranças em duplicidade antes de responder.",
       atendenteId: resolvida ? ATENDENTE_DEMO_NOME : null,
       assumidoMinutosDepois: resolvida ? 18 : undefined,
@@ -370,7 +370,7 @@ function sessaoSuporteRicardo(diasAtras: number, resolvida: boolean, numeroChama
     briefing: {
       motivo_transbordo: "cliente demonstrou frustração na mensagem",
       tom_emocional: "frustracao",
-      resumo_jornada: `Cliente Ricardo Teixeira — intenção: atendimento/suporte_tecnico. Última mensagem: "${reclamacao}".`,
+      resumo_jornada: `Cliente Ricardo Teixeira, intenção: atendimento/suporte_tecnico. Última mensagem: "${reclamacao}".`,
       sugestao_resolucao: "Verificar instabilidade confirmada na região antes de agendar visita técnica.",
       atendenteId: resolvida ? ATENDENTE_DEMO_NOME : null,
       assumidoMinutosDepois: resolvida ? 12 : undefined,
@@ -448,7 +448,7 @@ const CLIENTES_DEMO: ClienteSeed[] = [
           motivo_transbordo: "cliente com urgência declarada e falha técnica não resolvida automaticamente",
           tom_emocional: "urgencia",
           resumo_jornada:
-            'Cliente Roberto Nunes — intenção: atendimento/suporte_tecnico. Última mensagem: "ja reiniciei o roteador e continua sem internet, preciso disso resolvido agora mesmo".',
+            'Cliente Roberto Nunes, intenção: atendimento/suporte_tecnico. Última mensagem: "ja reiniciei o roteador e continua sem internet, preciso disso resolvido agora mesmo".',
           sugestao_resolucao: "Confirmar se há instabilidade na região antes de agendar visita técnica; cliente está em home office.",
         },
         nps: [{ alvo: "ia", nota: 4, comentario: "nao resolveu e eu preciso disso rapido", minutosDepois: 7 }],
@@ -564,7 +564,7 @@ const CLIENTES_DEMO: ClienteSeed[] = [
         briefing: {
           motivo_transbordo: "cliente solicitou atendente humano",
           tom_emocional: "neutro",
-          resumo_jornada: 'Cliente Beatriz Lima — intenção: venda/cancelamento. Última mensagem: "prefiro falar com uma pessoa mesmo, e um caso mais especifico".',
+          resumo_jornada: 'Cliente Beatriz Lima, intenção: venda/cancelamento. Última mensagem: "prefiro falar com uma pessoa mesmo, e um caso mais especifico".',
           sugestao_resolucao: "Verificar se a mudança de cidade está dentro da área de cobertura antes de processar o cancelamento.",
           atendenteId: ATENDENTE_DEMO_NOME,
           assumidoMinutosDepois: 9,
@@ -609,7 +609,7 @@ const CLIENTES_DEMO: ClienteSeed[] = [
         briefing: {
           motivo_transbordo: "cliente solicitou atendente humano",
           tom_emocional: "neutro",
-          resumo_jornada: 'Cliente Patrícia Nogueira — intenção: atendimento/reagendar_visita. Última mensagem: "prefiro falar com atendente pra confirmar direitinho o horario".',
+          resumo_jornada: 'Cliente Patrícia Nogueira, intenção: atendimento/reagendar_visita. Última mensagem: "prefiro falar com atendente pra confirmar direitinho o horario".',
           sugestao_resolucao: "Confirmar janela de horário compatível com a preferência de atendimento em Libras.",
           atendenteId: ATENDENTE_DEMO_NOME,
           assumidoMinutosDepois: 10,

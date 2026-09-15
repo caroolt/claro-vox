@@ -11,7 +11,7 @@ const RESPOSTAS_PADRAO: { rotulo: string; texto: string }[] = [
     texto:
       "Olá! Aqui é um atendente da Claro e vou continuar seu atendimento a partir de agora. Já estou com todo o histórico da conversa, não precisa repetir nada.",
   },
-  { rotulo: "Um momento", texto: "Só um momento, por favor — estou verificando isso no sistema." },
+  { rotulo: "Um momento", texto: "Só um momento, por favor, estou verificando isso no sistema." },
   { rotulo: "Confirmar", texto: "Consegui resolver o que você precisava? Posso ajudar com mais alguma coisa?" },
   { rotulo: "Encerramento", texto: "Obrigado pelo contato com a Claro! Qualquer coisa, é só chamar. Tenha um ótimo dia." },
 ];

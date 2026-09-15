@@ -82,7 +82,7 @@ async def continuar(
         tipo = _detectar_tipo_plano(texto)
         if not tipo:
             return ResultadoEtapa(
-                "Não identifiquei o tipo de plano — pode escolher entre Pré-pago, Controle ou Pós-pago?",
+                "Não identifiquei o tipo de plano. Pode escolher entre Pré-pago, Controle ou Pós-pago?",
                 fluxo_dados,
             )
         novo = {**fluxo_dados, "tipo_plano": tipo, "etapa": "nome"}
@@ -101,14 +101,14 @@ async def continuar(
     if etapa == "data_nascimento":
         data = _parsear_data_nascimento(texto)
         if not data:
-            return ResultadoEtapa("Não entendi a data — pode informar no formato dd/mm/aaaa?", fluxo_dados)
+            return ResultadoEtapa("Não entendi a data. Pode informar no formato dd/mm/aaaa?", fluxo_dados)
         novo = {**fluxo_dados, "data_nascimento": data, "etapa": "cpf"}
         return ResultadoEtapa("E para finalizar, o seu CPF (só números):", novo)
 
     if etapa == "cpf":
         cpf = _parsear_cpf(texto)
         if not cpf:
-            return ResultadoEtapa("CPF inválido — digite os 11 números, sem pontos ou traço.", fluxo_dados)
+            return ResultadoEtapa("CPF inválido. Digite os 11 números, sem pontos ou traço.", fluxo_dados)
         return await _finalizar(civ_url, sessao_id, {**fluxo_dados, "cpf": cpf})
 
     # Estado desconhecido/corrompido — aborta o fluxo sem travar a conversa.

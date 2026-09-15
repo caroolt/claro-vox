@@ -8,7 +8,7 @@ type Etapa = "credenciais" | "mfa" | "mfa_configuracao";
 
 const DESTAQUES = [
   { icone: LockKeyhole, texto: "Login com senha + verificação em duas etapas (MFA)" },
-  { icone: ShieldCheck, texto: "Acesso por perfil — admin ou atendente" },
+  { icone: ShieldCheck, texto: "Acesso por perfil: admin ou atendente" },
   { icone: ScanLine, texto: "Cada sessão tem um protocolo próprio, rastreável de ponta a ponta" },
 ];
 
@@ -80,7 +80,7 @@ export function LoginScreen({ onEntrar }: { onEntrar: (token: string, usuario: U
             Vox Briefing
           </h1>
           <p className="mb-8 max-w-xs text-sm text-white/50">
-            Acesso restrito à operação — fila de transbordo, histórico de clientes e base de conhecimento em tempo
+            Acesso restrito à operação: fila de transbordo, histórico de clientes e base de conhecimento em tempo
             real.
           </p>
           <ul className="space-y-4">
@@ -95,7 +95,7 @@ export function LoginScreen({ onEntrar }: { onEntrar: (token: string, usuario: U
           </ul>
         </div>
 
-        <p className="relative text-[11px] text-white/30">Claro Vox — Camada de Identidade Conversacional</p>
+        <p className="relative text-[11px] text-white/30">Claro Vox · Camada de Identidade Conversacional</p>
       </div>
 
       {/* Formulário */}
@@ -146,7 +146,7 @@ export function LoginScreen({ onEntrar }: { onEntrar: (token: string, usuario: U
           {etapa === "mfa_configuracao" && (
             <form onSubmit={confirmarCodigo} className="space-y-4">
               <p className="rounded-lg bg-claro-gray-light px-3 py-2.5 text-xs text-gray-500">
-                Primeiro acesso — escaneie este QR code em um app autenticador (Google Authenticator, Authy, etc.) e
+                Primeiro acesso: escaneie este QR code em um app autenticador (Google Authenticator, Authy, etc.) e
                 depois digite o código de 6 dígitos gerado.
               </p>
               <div className="flex justify-center">
