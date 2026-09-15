@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Bot,
+  Globe,
+  MessageCircle,
+  Phone,
+  RotateCcw,
+  Send,
+  Smartphone,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import { civ, orchestrator } from "../api";
-import logoClaroVox from "../assets/claro-vox-logo.png";
 import type { Canal } from "../types";
 import { useBriefingSocket } from "../useBriefingSocket";
 
@@ -15,11 +26,11 @@ interface Bubble {
   nps?: { alvo: "ia" | "atendente"; briefingId?: string | null };
 }
 
-const CANAIS: { valor: Canal; rotulo: string; icone: string }[] = [
-  { valor: "whatsapp", rotulo: "WhatsApp", icone: "💬" },
-  { valor: "site", rotulo: "Site", icone: "🌐" },
-  { valor: "app", rotulo: "App Claro", icone: "📱" },
-  { valor: "voz", rotulo: "Central de Voz", icone: "☎️" },
+const CANAIS: { valor: Canal; rotulo: string; icone: LucideIcon }[] = [
+  { valor: "whatsapp", rotulo: "WhatsApp", icone: MessageCircle },
+  { valor: "site", rotulo: "Site", icone: Globe },
+  { valor: "app", rotulo: "App Claro", icone: Smartphone },
+  { valor: "voz", rotulo: "Central de Voz", icone: Phone },
 ];
 
 function uid() {
@@ -111,7 +122,7 @@ export function ChatSimulator() {
         const meta = `intenção: ${r.categoria} · tom: ${r.tom_emocional}${r.fonte_classificacao === "llm" ? " · classificado pelo Claude" : ""}`;
         add("vox", r.resposta, meta, r.transbordo ? { alvo: "ia", briefingId: r.briefing_id } : undefined);
         if (r.transbordo) {
-          add("sistema", `🔁 Transbordo acionado — briefing #${String(r.briefing_id).slice(0, 8)} enviado ao painel do atendente (Vox Briefing).`);
+          add("sistema", `🔁 Transbordo acionado: briefing #${String(r.briefing_id).slice(0, 8)} enviado ao painel do atendente (Vox Briefing).`);
         }
       }
     } catch (e: any) {
@@ -140,10 +151,10 @@ export function ChatSimulator() {
         setClienteNome(r.cliente?.nome || null);
         setClienteId(r.cliente?.id || null);
         setProtocolo(r.protocolo || null);
-        add("sistema", `📡 Reconhecido automaticamente no canal ${canal} (RF004) — contexto trazido do canal anterior: ${r.canal_anterior || "nenhum"}.`);
+        add("sistema", `📡 Reconhecido automaticamente no canal ${canal} (RF004), trazendo o contexto do canal anterior: ${r.canal_anterior || "nenhum"}.`);
         add("vox", r.mensagem);
       } else {
-        add("sistema", "CPF não encontrado — iniciando um novo atendimento (Cold Start) neste canal.");
+        add("sistema", "CPF não encontrado. Iniciando um novo atendimento (Cold Start) neste canal.");
         setFase("inicio");
         setSessaoId(null);
       }
@@ -181,128 +192,177 @@ export function ChatSimulator() {
     setAtendimentoHumano(false);
   }
 
+  const canalAtual = CANAIS.find((c) => c.valor === canal) || CANAIS[0];
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-gray-500 mr-1">Canal:</span>
+    <div className="flex h-full flex-col bg-claro-gray-light">
+      {/* Barra de controle do simulador — não faz parte do "aparelho" do cliente */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-6 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400">Canal</span>
           {CANAIS.map((c) => (
             <button
               key={c.valor}
               onClick={() => trocarCanal(c.valor)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
                 canal === c.valor
-                  ? "bg-claro-red text-white border-claro-red"
-                  : "bg-white text-gray-600 border-gray-300 hover:border-claro-red"
+                  ? "border-claro-red bg-claro-red text-white"
+                  : "border-gray-300 bg-white text-gray-600 hover:border-claro-red hover:text-claro-red"
               }`}
             >
-              {c.icone} {c.rotulo}
+              <c.icone className="h-3.5 w-3.5" strokeWidth={2.25} />
+              {c.rotulo}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          {clienteNome && <span className="text-sm text-gray-500">👤 {clienteNome}</span>}
-          {protocolo && (
-            <span className="rounded-full bg-claro-red-light px-2.5 py-1 text-xs font-medium text-claro-red-dark">
-              protocolo {protocolo}
-            </span>
-          )}
+        <div className="flex items-center gap-3">
           {clienteId && (
-            <button onClick={excluirDados} className="text-xs text-gray-400 hover:text-claro-red underline">
+            <button
+              onClick={excluirDados}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-claro-red"
+            >
+              <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
               Excluir meus dados (LGPD)
             </button>
           )}
-          <button onClick={reiniciar} className="text-xs text-gray-400 hover:text-claro-red underline">
+          <button
+            onClick={reiniciar}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-claro-red"
+          >
+            <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} />
             Reiniciar
           </button>
         </div>
       </div>
 
       {mostrarTrocaCanal && (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3 flex items-center gap-2">
-          <span className="text-sm text-yellow-800">
-            Simulando contato pelo canal <strong>{canal}</strong>: informe o CPF para reconhecimento automático (RF004)
+        <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-6 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" strokeWidth={2} />
+          <span className="text-sm text-amber-800">
+            Simulando contato pelo canal <strong>{canalAtual.rotulo}</strong>: informe o CPF para reconhecimento
+            automático (RF004)
           </span>
           <input
             value={cpfTroca}
             onChange={(e) => setCpfTroca(e.target.value)}
             placeholder="000.000.000-00"
-            className="border border-yellow-300 rounded px-2 py-1 text-sm"
+            className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-sm focus:border-claro-red focus:outline-none"
           />
           <button
             onClick={confirmarTrocaCanal}
             disabled={carregando}
-            className="bg-claro-red text-white text-sm px-3 py-1 rounded disabled:opacity-50"
+            className="rounded-lg bg-claro-red px-3 py-1.5 text-sm font-medium text-white hover:bg-claro-red-dark disabled:opacity-50"
           >
             Confirmar
           </button>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-gray-50">
-        {bubbles.length === 0 && fase === "inicio" && (
-          <div className="text-center text-gray-400 mt-16">
-            <span className="mb-3 inline-flex rounded-xl bg-claro-black px-4 py-2.5">
-              <img src={logoClaroVox} alt="Claro Vox" className="h-8 w-auto" />
+      {/* "Aparelho" do cliente — janela de chat centralizada, como um app real */}
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6">
+        <div className="flex h-full min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg">
+          <div className="flex items-center gap-3 bg-claro-black px-4 py-3 text-white">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
+              <Bot className="h-4 w-4 text-claro-red" strokeWidth={2} />
             </span>
-            <p className="text-lg mb-2">Simulador de atendimento</p>
-            <p className="text-sm mb-6">Escolha um canal acima e inicie a conversa para ver o Cold Start (RF010/RF011) em ação.</p>
-            <button
-              onClick={iniciarConversa}
-              disabled={carregando}
-              className="bg-claro-red text-white px-5 py-2 rounded-full font-medium disabled:opacity-50"
-            >
-              Iniciar conversa
-            </button>
-          </div>
-        )}
-        {bubbles.map((b) => (
-          <div key={b.id} className="space-y-3">
-            <div className={`flex ${b.de === "cliente" ? "justify-end" : "justify-start"}`}>
-              {b.de === "sistema" ? (
-                <div className="mx-auto text-xs text-center text-gray-500 bg-gray-200 rounded-full px-3 py-1">{b.texto}</div>
-              ) : (
-                <div
-                  className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                    b.de === "cliente"
-                      ? "bg-claro-red text-white rounded-br-sm"
-                      : b.de === "atendente"
-                      ? "bg-claro-red-light text-gray-800 rounded-bl-sm border border-claro-red/20"
-                      : "bg-white text-gray-800 rounded-bl-sm border border-gray-200"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{b.texto}</p>
-                  {b.meta && <p className={`mt-1 text-[11px] ${b.de === "cliente" ? "text-red-100" : "text-gray-400"}`}>{b.meta}</p>}
-                </div>
-              )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">Vox · Assistente Claro</p>
+              <p className="flex items-center gap-1.5 text-[11px] text-white/50">
+                <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+                <canalAtual.icone className="h-3 w-3" strokeWidth={2} />
+                {canalAtual.rotulo}
+              </p>
             </div>
-            {b.nps && sessaoId && (
-              <NpsInline sessaoId={sessaoId} alvo={b.nps.alvo} briefingId={b.nps.briefingId} />
+            {clienteNome && (
+              <span className="hidden max-w-[9rem] truncate text-xs text-white/60 sm:inline">{clienteNome}</span>
+            )}
+            {protocolo && (
+              <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-[11px] font-medium text-white/80">
+                {protocolo}
+              </span>
             )}
           </div>
-        ))}
-        <div ref={fimRef} />
-      </div>
 
-      {fase !== "inicio" && (
-        <div className="border-t border-gray-200 bg-white p-3 flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && enviar()}
-            placeholder="Digite sua mensagem…"
-            disabled={carregando}
-            className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-claro-red"
-          />
-          <button
-            onClick={enviar}
-            disabled={carregando || !input.trim()}
-            className="bg-claro-red text-white px-5 py-2 rounded-full text-sm font-medium disabled:opacity-50"
-          >
-            Enviar
-          </button>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-claro-gray-light px-4 py-4">
+            {bubbles.length === 0 && fase === "inicio" && (
+              <div className="mt-16 text-center text-gray-400">
+                <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-claro-red-light">
+                  <Bot className="h-6 w-6 text-claro-red" strokeWidth={2} />
+                </span>
+                <p className="mb-2 text-lg text-gray-600">Simulador de atendimento</p>
+                <p className="mb-6 px-6 text-sm">
+                  Escolha um canal acima e inicie a conversa para ver o Cold Start (RF010/RF011) em ação.
+                </p>
+                <button
+                  onClick={iniciarConversa}
+                  disabled={carregando}
+                  className="rounded-full bg-claro-red px-5 py-2 font-medium text-white transition hover:bg-claro-red-dark disabled:opacity-50"
+                >
+                  Iniciar conversa
+                </button>
+              </div>
+            )}
+            {bubbles.map((b) => (
+              <div key={b.id} className="space-y-3">
+                <div className={`flex items-end gap-2 ${b.de === "cliente" ? "justify-end" : "justify-start"}`}>
+                  {b.de === "sistema" ? (
+                    <div className="mx-auto rounded-full bg-gray-200 px-3 py-1 text-center text-xs text-gray-500">
+                      {b.texto}
+                    </div>
+                  ) : (
+                    <>
+                      {b.de === "vox" && (
+                        <span className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-claro-black text-white">
+                          <Bot className="h-3.5 w-3.5" strokeWidth={2} />
+                        </span>
+                      )}
+                      <div
+                        className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                          b.de === "cliente"
+                            ? "rounded-br-sm bg-claro-red text-white"
+                            : b.de === "atendente"
+                            ? "rounded-bl-sm border border-claro-red/20 bg-claro-red-light text-gray-800"
+                            : "rounded-bl-sm border border-gray-200 bg-white text-gray-800"
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap">{b.texto}</p>
+                        {b.meta && (
+                          <p className={`mt-1 text-[11px] ${b.de === "cliente" ? "text-red-100" : "text-gray-400"}`}>
+                            {b.meta}
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {b.nps && sessaoId && <NpsInline sessaoId={sessaoId} alvo={b.nps.alvo} briefingId={b.nps.briefingId} />}
+              </div>
+            ))}
+            <div ref={fimRef} />
+          </div>
+
+          {fase !== "inicio" && (
+            <div className="flex gap-2 border-t border-gray-200 bg-white p-3">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && enviar()}
+                placeholder="Digite sua mensagem…"
+                disabled={carregando}
+                className="flex-1 rounded-full border border-gray-300 px-4 py-2 text-sm focus:border-claro-red focus:outline-none"
+              />
+              <button
+                onClick={enviar}
+                disabled={carregando || !input.trim()}
+                className="flex items-center gap-1.5 rounded-full bg-claro-red px-4 py-2 text-sm font-medium text-white transition hover:bg-claro-red-dark disabled:opacity-50"
+              >
+                <Send className="h-3.5 w-3.5" strokeWidth={2.25} />
+                Enviar
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

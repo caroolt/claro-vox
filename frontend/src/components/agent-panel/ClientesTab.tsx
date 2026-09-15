@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { Search, Users } from "lucide-react";
 import { civ } from "../../api";
 import type { ClienteResumo } from "../../types";
 import type { WsEvent } from "../../useBriefingSocket";
 import { fmtData, fmtRelativo, pareceCpf } from "./meta";
-import { TipoClienteBadge } from "./ui";
+import { SectionTitle, TipoClienteBadge } from "./ui";
 
 export function ClientesTab({
   ultimoEvento,
@@ -49,12 +50,15 @@ export function ClientesTab({
       <div className="rounded-xl border border-gray-200 bg-white p-3">
         <label className="text-xs text-gray-500">
           Buscar cliente por nome, telefone ou CPF completo
-          <input
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="ex.: Carlos  ·  (11) 99999-0000  ·  111.222.333-96"
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-claro-red focus:outline-none"
-          />
+          <div className="relative mt-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" strokeWidth={2} />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="ex.: Carlos  ·  (11) 99999-0000  ·  111.222.333-96"
+              className="w-full rounded-lg border border-gray-300 py-2 pl-8 pr-3 text-sm text-gray-800 focus:border-claro-red focus:outline-none"
+            />
+          </div>
         </label>
         <p className="mt-1.5 text-[11px] text-gray-400">
           {porCpf
@@ -67,9 +71,7 @@ export function ClientesTab({
 
       <section className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
-          <h3 className="text-sm font-medium text-gray-700">
-            {termo ? "Resultados" : "Clientes recentes"}
-          </h3>
+          <SectionTitle icone={Users}>{termo ? "Resultados" : "Clientes recentes"}</SectionTitle>
           <span className="text-[11px] text-gray-400">
             {carregando ? "buscando…" : `${resultados.length} cliente(s)`}
           </span>

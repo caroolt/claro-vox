@@ -29,7 +29,7 @@ load_dotenv()
 CIV_URL = os.getenv("CIV_URL", "http://localhost:4001")
 PORT = int(os.getenv("PORT", "4002"))
 
-app = FastAPI(title="Claro Vox — Orquestrador", version="1.0.0")
+app = FastAPI(title="Claro Vox · Orquestrador", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -313,7 +313,7 @@ async def processar_mensagem(body: MensagemIn):
             trechos[0]["conteudo"] if trechos else
             "Revisar histórico completo da sessão e decidir a melhor forma de resolver com o cliente."
         )
-        resumo = f"Cliente {nome_cliente or '(não identificado)'} — intenção: {categoria}. Última mensagem: \"{body.conteudo}\"."
+        resumo = f"Cliente {nome_cliente or '(não identificado)'}, intenção: {categoria}. Última mensagem: \"{body.conteudo}\"."
         handoff_resp = await _civ_post(
             "/v1/handoff",
             {

@@ -187,6 +187,169 @@ export function CompareBars({
   );
 }
 
+// Donut — distribuição parte-todo com o total no centro (ex.: sessões por
+// estado). Preferido a mais uma barra empilhada quando o total em si já é
+// uma métrica que vale a pena destacar visualmente.
+export function DonutChart({
+  segments,
+  size = 132,
+  thickness = 16,
+  centerLabel,
+}: {
+  segments: Segment[];
+  size?: number;
+  thickness?: number;
+  centerLabel?: string;
+}) {
+  const [hover, setHover] = useState<string | null>(null);
+  const total = segments.reduce((s, seg) => s + seg.value, 0);
+  const radius = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const visiveis = segments.filter((s) => s.value > 0);
+
+  let acumulado = 0;
+  const arcos = visiveis.map((seg) => {
+    const frac = total > 0 ? seg.value / total : 0;
+    // Pequeno respiro entre fatias (2px de circunferência), como nos
+    // donuts de referência — nunca deixa a fatia negativa quando é bem fina.
+    const bruto = frac * circumference;
+    const dash = Math.max(bruto - 2, 0);
+    const arco = { ...seg, dash, offset: -acumulado, pct: frac * 100 };
+    acumulado += bruto;
+    return arco;
+  });
+
+  const destaque = hover ? arcos.find((a) => a.key === hover) : null;
+
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#F4F4F3" strokeWidth={thickness} />
+        {arcos.map((arco) => (
+          <circle
+            key={arco.key}
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={arco.color}
+            strokeWidth={thickness}
+            strokeDasharray={`${arco.dash} ${circumference - arco.dash}`}
+            strokeDashoffset={arco.offset}
+            strokeLinecap="round"
+            opacity={hover && hover !== arco.key ? 0.35 : 1}
+            className="cursor-default transition-opacity"
+            onMouseEnter={() => setHover(arco.key)}
+            onMouseLeave={() => setHover((h) => (h === arco.key ? null : h))}
+          />
+        ))}
+      </svg>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+        <span className="text-2xl font-bold tabular-nums text-gray-900">
+          {destaque ? destaque.value : total}
+        </span>
+        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+          {destaque ? destaque.label : centerLabel}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Lista ordenada com barra inline por item (ex.: sessões por canal) — mais
+// legível que uma única barra empilhada quando há poucas categorias e vale
+// a pena comparar os valores lado a lado.
+export function RankedBars({
+  segments,
+  emptyLabel = "Sem dados ainda",
+}: {
+  segments: Segment[];
+  emptyLabel?: string;
+}) {
+  const total = segments.reduce((s, seg) => s + seg.value, 0);
+  if (total === 0) {
+    return <p className="text-sm text-gray-400">{emptyLabel}</p>;
+  }
+  const ordenado = [...segments].filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
+  const max = Math.max(...ordenado.map((s) => s.value));
+
+  return (
+    <div className="space-y-2.5">
+      {ordenado.map((seg) => (
+        <div key={seg.key}>
+          <div className="mb-1 flex items-center justify-between text-xs">
+            <span className="text-gray-600">{seg.label}</span>
+            <span className="tabular-nums text-gray-400">
+              <span className="font-semibold text-gray-800">{seg.value}</span>{" "}
+              ({((seg.value / total) * 100).toFixed(0)}%)
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${(seg.value / max) * 100}%`, backgroundColor: seg.color }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Gauge radial — valor único contra uma escala fixa (ex.: nota média de NPS
+// de 0 a 10). Usado lado a lado para comparar IA × atendentes humanos.
+export function RadialMeter({
+  value,
+  max,
+  color,
+  size = 96,
+  thickness = 10,
+  vazio,
+}: {
+  value: number;
+  max: number;
+  color: string;
+  size?: number;
+  thickness?: number;
+  vazio?: boolean;
+}) {
+  const radius = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const pct = vazio ? 0 : Math.max(0, Math.min(1, value / max));
+  const dash = pct * circumference;
+
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#F4F4F3" strokeWidth={thickness} />
+        {!vazio && (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth={thickness}
+            strokeDasharray={`${dash} ${circumference - dash}`}
+            strokeLinecap="round"
+            className="transition-all duration-500"
+          />
+        )}
+      </svg>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+        {vazio ? (
+          <span className="text-[10px] text-gray-300">sem dados</span>
+        ) : (
+          <>
+            <span className="text-xl font-bold tabular-nums text-gray-900">{value.toFixed(1)}</span>
+            <span className="text-[10px] text-gray-300">/ {max}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Meter — proporção única contra uma meta (ex.: taxa de transbordo), com
 // marcador de meta interna. Preferido a um "donut de 2 fatias" (ver dataviz).
 export function Meter({

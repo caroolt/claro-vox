@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { KeyRound, Pencil, Power, Trash2, UserPlus, Users } from "lucide-react";
 import { usuarios } from "../../api";
 import type { UsuarioAdmin, Role } from "../../types";
+import { SectionTitle } from "./ui";
 
-// Aba exclusiva do admin — CRUD normal dos atendentes (e outros admins) do
+// Aba exclusiva do admin: CRUD normal dos atendentes (e outros admins) do
 // Painel do Atendente / Vox Briefing (RBAC).
 export function AtendentesTab({ usuarioLogadoId }: { usuarioLogadoId: string }) {
   const [lista, setLista] = useState<UsuarioAdmin[]>([]);
@@ -46,12 +48,13 @@ export function AtendentesTab({ usuarioLogadoId }: { usuarioLogadoId: string }) 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-medium text-gray-700">Atendentes</h3>
+        <SectionTitle icone={Users}>Atendentes</SectionTitle>
         <button
           onClick={() => setEditando("novo")}
-          className="rounded-lg bg-claro-red px-3 py-1.5 text-xs font-medium text-white hover:bg-claro-red-dark"
+          className="flex items-center gap-1.5 rounded-lg bg-claro-red px-3 py-1.5 text-xs font-medium text-white hover:bg-claro-red-dark"
         >
-          + Novo atendente
+          <UserPlus className="h-3.5 w-3.5" strokeWidth={2} />
+          Novo atendente
         </button>
       </div>
 
@@ -71,12 +74,12 @@ export function AtendentesTab({ usuarioLogadoId }: { usuarioLogadoId: string }) 
                 <th className="pb-2 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-100">
               {lista.map((u) => (
-                <tr key={u.id} className="border-t border-gray-100">
-                  <td className="py-2 font-medium text-gray-800">{u.nome}</td>
-                  <td className="py-2 text-gray-500">{u.email}</td>
-                  <td className="py-2">
+                <tr key={u.id} className="hover:bg-claro-gray-light/60">
+                  <td className="py-2.5 font-medium text-gray-800">{u.nome}</td>
+                  <td className="py-2.5 text-gray-500">{u.email}</td>
+                  <td className="py-2.5">
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] ${
                         u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
@@ -85,7 +88,7 @@ export function AtendentesTab({ usuarioLogadoId }: { usuarioLogadoId: string }) 
                       {u.role}
                     </span>
                   </td>
-                  <td className="py-2">
+                  <td className="py-2.5">
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] ${
                         u.ativo ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
@@ -94,22 +97,18 @@ export function AtendentesTab({ usuarioLogadoId }: { usuarioLogadoId: string }) 
                       {u.ativo ? "ativo" : "inativo"}
                     </span>
                   </td>
-                  <td className="py-2 text-[11px] text-gray-400">{u.mfa_ativado ? "configurado" : "pendente"}</td>
-                  <td className="py-2 text-right">
-                    <div className="flex justify-end gap-1.5">
-                      <button onClick={() => setEditando(u)} className="rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:border-claro-red hover:text-claro-red">
-                        editar
-                      </button>
-                      <button onClick={() => resetarMfa(u)} className="rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:border-claro-red hover:text-claro-red">
-                        resetar MFA
-                      </button>
-                      <button onClick={() => alternarAtivo(u)} className="rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:border-claro-red hover:text-claro-red">
-                        {u.ativo ? "desativar" : "ativar"}
-                      </button>
+                  <td className="py-2.5 text-[11px] text-gray-400">{u.mfa_ativado ? "configurado" : "pendente"}</td>
+                  <td className="py-2.5 text-right">
+                    <div className="flex justify-end gap-1">
+                      <BotaoAcao onClick={() => setEditando(u)} titulo="Editar" icone={Pencil} />
+                      <BotaoAcao onClick={() => resetarMfa(u)} titulo="Resetar MFA" icone={KeyRound} />
+                      <BotaoAcao
+                        onClick={() => alternarAtivo(u)}
+                        titulo={u.ativo ? "Desativar" : "Ativar"}
+                        icone={Power}
+                      />
                       {u.id !== usuarioLogadoId && (
-                        <button onClick={() => excluir(u)} className="rounded border border-gray-200 px-2 py-1 text-[11px] text-claro-red hover:border-claro-red">
-                          excluir
-                        </button>
+                        <BotaoAcao onClick={() => excluir(u)} titulo="Excluir" icone={Trash2} perigo />
                       )}
                     </div>
                   </td>
@@ -138,6 +137,31 @@ export function AtendentesTab({ usuarioLogadoId }: { usuarioLogadoId: string }) 
         />
       )}
     </section>
+  );
+}
+
+function BotaoAcao({
+  onClick,
+  titulo,
+  icone: Icone,
+  perigo,
+}: {
+  onClick: () => void;
+  titulo: string;
+  icone: typeof Pencil;
+  perigo?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={titulo}
+      aria-label={titulo}
+      className={`rounded-lg border border-gray-200 p-1.5 transition ${
+        perigo ? "text-claro-red hover:border-claro-red hover:bg-claro-red-light" : "text-gray-500 hover:border-claro-red hover:text-claro-red"
+      }`}
+    >
+      <Icone className="h-3.5 w-3.5" strokeWidth={2} />
+    </button>
   );
 }
 
@@ -181,14 +205,19 @@ function FormularioUsuario({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onFechar}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onFechar}>
       <form
         onSubmit={salvar}
-        className="mx-4 w-full max-w-sm rounded-xl bg-white p-5"
+        className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-3 font-semibold text-gray-800">{usuario ? "Editar atendente" : "Novo atendente"}</h3>
-        <div className="space-y-3">
+        <div className="flex items-center gap-3 bg-claro-black px-5 py-4 text-white">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
+            <UserPlus className="h-4 w-4 text-claro-red" strokeWidth={2} />
+          </span>
+          <h3 className="font-semibold">{usuario ? "Editar atendente" : "Novo atendente"}</h3>
+        </div>
+        <div className="space-y-3 p-5">
           <Campo label="Nome">
             <input required value={nome} onChange={(e) => setNome(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-claro-red focus:outline-none" />
           </Campo>
@@ -213,11 +242,11 @@ function FormularioUsuario({
           </Campo>
           {erro && <p className="text-xs text-claro-red">{erro}</p>}
         </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={onFechar} className="rounded px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700">
+        <div className="flex justify-end gap-2 border-t border-gray-100 bg-claro-gray-light px-5 py-3">
+          <button type="button" onClick={onFechar} className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700">
             cancelar
           </button>
-          <button type="submit" disabled={salvando} className="rounded bg-claro-red px-3 py-1.5 text-sm text-white hover:bg-claro-red-dark disabled:opacity-50">
+          <button type="submit" disabled={salvando} className="rounded-lg bg-claro-red px-3 py-1.5 text-sm font-medium text-white hover:bg-claro-red-dark disabled:opacity-50">
             {salvando ? "salvando…" : "salvar"}
           </button>
         </div>

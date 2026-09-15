@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { Bot, FileDown, MessageSquareText, Send, Sparkles, X } from "lucide-react";
 import { civ } from "../../api";
 import type { KnowledgeItem, Mensagem } from "../../types";
 import type { WsEvent } from "../../useBriefingSocket";
 import { exportarConversaPdf } from "./exportar";
+import { CanalTag } from "./ui";
 
 // Respostas fixas para padronizar o tom do atendimento humano.
 const RESPOSTAS_PADRAO: { rotulo: string; texto: string }[] = [
@@ -11,7 +13,7 @@ const RESPOSTAS_PADRAO: { rotulo: string; texto: string }[] = [
     texto:
       "Olá! Aqui é um atendente da Claro e vou continuar seu atendimento a partir de agora. Já estou com todo o histórico da conversa, não precisa repetir nada.",
   },
-  { rotulo: "Um momento", texto: "Só um momento, por favor — estou verificando isso no sistema." },
+  { rotulo: "Um momento", texto: "Só um momento, por favor, estou verificando isso no sistema." },
   { rotulo: "Confirmar", texto: "Consegui resolver o que você precisava? Posso ajudar com mais alguma coisa?" },
   { rotulo: "Encerramento", texto: "Obrigado pelo contato com a Claro! Qualquer coisa, é só chamar. Tenha um ótimo dia." },
 ];
@@ -94,23 +96,29 @@ export function SessionChatPanel({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-            <div>
-              <h3 className="font-semibold text-gray-800">Chat com {clienteNome || "cliente"}</h3>
-              <p className="text-xs text-gray-400">
-                canal: {canal} · suas mensagens chegam ao cliente identificadas como atendente
-              </p>
+          <div className="flex items-center justify-between border-b border-gray-200 bg-claro-black px-4 py-3 text-white">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
+                {(clienteNome || "?")[0]?.toUpperCase()}
+              </span>
+              <div>
+                <h3 className="font-semibold">Chat com {clienteNome || "cliente"}</h3>
+                <p className="flex items-center gap-1.5 text-[11px] text-white/50">
+                  <CanalTag canal={canal} /> · suas mensagens chegam identificadas como atendente
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={exportarPdf}
                 disabled={exportando}
-                className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:border-claro-red hover:text-claro-red disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white/80 hover:border-white/40 hover:text-white disabled:opacity-50"
               >
-                {exportando ? "gerando…" : "⬇ Exportar PDF"}
+                <FileDown className="h-3.5 w-3.5" strokeWidth={2} />
+                {exportando ? "gerando…" : "Exportar PDF"}
               </button>
-              <button onClick={onClose} className="text-lg leading-none text-gray-400 hover:text-gray-600">
-                ×
+              <button onClick={onClose} className="text-white/50 hover:text-white">
+                <X className="h-5 w-5" strokeWidth={2} />
               </button>
             </div>
           </div>
@@ -125,7 +133,15 @@ export function SessionChatPanel({
                   : "rounded-br-sm bg-claro-red text-white";
               const metaCor = m.remetente === "vox" ? "text-red-100" : "text-gray-400";
               return (
-                <div key={m.id} className={`flex ${m.remetente === "cliente" ? "justify-start" : "justify-end"}`}>
+                <div
+                  key={m.id}
+                  className={`flex items-end gap-2 ${m.remetente === "cliente" ? "justify-start" : "justify-end"}`}
+                >
+                  {m.remetente === "vox" && (
+                    <span className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-claro-black text-white">
+                      <Bot className="h-3.5 w-3.5" strokeWidth={2} />
+                    </span>
+                  )}
                   <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow-sm ${estilo}`}>
                     <p className="whitespace-pre-wrap">{m.conteudo}</p>
                     <p className={`mt-0.5 text-[10px] ${metaCor}`}>
@@ -157,8 +173,9 @@ export function SessionChatPanel({
             <button
               onClick={enviar}
               disabled={enviando || !input.trim()}
-              className="rounded-full bg-claro-red px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-full bg-claro-red px-4 py-2 text-sm font-medium text-white transition hover:bg-claro-red-dark disabled:opacity-50"
             >
+              <Send className="h-3.5 w-3.5" strokeWidth={2.25} />
               Enviar
             </button>
           </div>
@@ -166,7 +183,10 @@ export function SessionChatPanel({
 
         <aside className="hidden w-72 shrink-0 flex-col gap-4 overflow-y-auto border-l border-gray-200 bg-gray-50 p-3 md:flex">
           <div>
-            <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Respostas padrão</h4>
+            <h4 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
+              Respostas padrão
+            </h4>
             <div className="space-y-1.5">
               {RESPOSTAS_PADRAO.map((r) => (
                 <button
@@ -182,7 +202,10 @@ export function SessionChatPanel({
           </div>
 
           <div>
-            <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Da base de conhecimento</h4>
+            <h4 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+              Da base de conhecimento
+            </h4>
             <div className="space-y-1.5">
               {sugestoes.map((s) => (
                 <button

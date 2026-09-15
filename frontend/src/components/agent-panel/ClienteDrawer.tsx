@@ -1,10 +1,23 @@
 import { useEffect, useState } from "react";
+import {
+  Accessibility,
+  Activity,
+  ArrowRightLeft,
+  FileDown,
+  History,
+  IdCard,
+  MessageCircle,
+  Star,
+  Trash2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { civ } from "../../api";
 import type { ClienteDetalhe } from "../../types";
 import type { WsEvent } from "../../useBriefingSocket";
 import { StackedBar, STATUS_HEX } from "../charts";
-import { CANAL_META, fmtData, fmtDataHora, montarSegmentos, TOM_META, TOM_ORDEM } from "./meta";
-import { EstadoBadge, Row, TipoClienteBadge, TomBadge } from "./ui";
+import { fmtData, fmtDataHora, montarSegmentos, TOM_META, TOM_ORDEM } from "./meta";
+import { CanalTag, EstadoBadge, Row, TipoClienteBadge, TomBadge } from "./ui";
 import { exportarConversaPdf } from "./exportar";
 
 export function ClienteDrawer({
@@ -92,8 +105,8 @@ export function ClienteDrawer({
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-xl leading-none text-gray-400 hover:text-gray-600">
-            ×
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" strokeWidth={2} />
           </button>
         </div>
 
@@ -116,7 +129,7 @@ export function ClienteDrawer({
 
               {/* Identificação */}
               <section className="rounded-xl border border-gray-200 bg-white p-4">
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Identificação</h4>
+                <TituloSecao icone={IdCard}>Identificação</TituloSecao>
                 <dl className="space-y-2 text-sm">
                   <Row label="CPF" value={c!.tem_cpf ? "cadastrado (armazenado como hash)" : "não informado"} />
                   {c!.telefone && <Row label="Telefone" value={c!.telefone} />}
@@ -133,9 +146,7 @@ export function ClienteDrawer({
 
               {/* Acessibilidade */}
               <section className="rounded-xl border border-gray-200 bg-white p-4">
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  Preferências de acessibilidade
-                </h4>
+                <TituloSecao icone={Accessibility}>Preferências de acessibilidade</TituloSecao>
                 {prefs.length ? (
                   <div className="flex flex-wrap gap-1.5">
                     {prefs.map((p) => (
@@ -151,9 +162,7 @@ export function ClienteDrawer({
 
               {/* NPS dado pelo cliente */}
               <section className="rounded-xl border border-gray-200 bg-white p-4">
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  NPS dado por este cliente
-                </h4>
+                <TituloSecao icone={Star}>NPS dado por este cliente</TituloSecao>
                 <div className="grid grid-cols-2 gap-3">
                   <NpsBloco titulo="Assistente virtual" dado={dados.nps.ia} />
                   <NpsBloco titulo="Atendente" dado={dados.nps.atendente} />
@@ -162,24 +171,18 @@ export function ClienteDrawer({
 
               {/* Tom emocional */}
               <section className="rounded-xl border border-gray-200 bg-white p-4">
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  Tom emocional (histórico)
-                </h4>
+                <TituloSecao icone={Activity}>Tom emocional (histórico)</TituloSecao>
                 <StackedBar segments={segmentosTom} emptyLabel="Nenhuma mensagem classificada" />
               </section>
 
               {/* Sessões */}
               <section className="rounded-xl border border-gray-200 bg-white p-4">
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  Sessões ({dados.sessoes.length})
-                </h4>
+                <TituloSecao icone={History}>Sessões ({dados.sessoes.length})</TituloSecao>
                 <div className="space-y-2">
                   {dados.sessoes.map((s) => (
                     <div key={s.id} className="rounded-lg border border-gray-100 px-3 py-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">
-                          {CANAL_META[s.canal || ""]?.icone} {CANAL_META[s.canal || ""]?.label || s.canal || "?"}
-                        </span>
+                        <CanalTag canal={s.canal} className="text-xs text-gray-500" />
                         <EstadoBadge estado={s.estado} />
                       </div>
                       <div className="mt-1 flex items-center justify-between gap-2">
@@ -191,8 +194,9 @@ export function ClienteDrawer({
                           <button
                             onClick={() => exportarPdf(s.id)}
                             disabled={pdfSessao === s.id}
-                            className="rounded border border-gray-300 px-2 py-0.5 text-[11px] text-gray-500 hover:border-claro-red hover:text-claro-red disabled:opacity-50"
+                            className="flex items-center gap-1 rounded border border-gray-300 px-2 py-0.5 text-[11px] text-gray-500 hover:border-claro-red hover:text-claro-red disabled:opacity-50"
                           >
+                            <FileDown className="h-3 w-3" strokeWidth={2} />
                             {pdfSessao === s.id ? "gerando…" : "PDF"}
                           </button>
                           {s.estado === "EM_ATENDIMENTO_HUMANO" && (
@@ -200,8 +204,9 @@ export function ClienteDrawer({
                               onClick={() =>
                                 onAbrirChat({ id: s.id, clienteNome: c!.nome, canal: s.canal || "whatsapp" })
                               }
-                              className="rounded bg-claro-red px-2 py-0.5 text-[11px] text-white hover:bg-claro-red-dark"
+                              className="flex items-center gap-1 rounded bg-claro-red px-2 py-0.5 text-[11px] text-white hover:bg-claro-red-dark"
                             >
+                              <MessageCircle className="h-3 w-3" strokeWidth={2} />
                               Abrir chat
                             </button>
                           )}
@@ -215,9 +220,7 @@ export function ClienteDrawer({
 
               {/* Transbordos */}
               <section className="rounded-xl border border-gray-200 bg-white p-4">
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  Transbordos ({dados.briefings.length})
-                </h4>
+                <TituloSecao icone={ArrowRightLeft}>Transbordos ({dados.briefings.length})</TituloSecao>
                 <div className="space-y-2">
                   {dados.briefings.map((b) => {
                     const aberto = briefingAberto === b.id;
@@ -255,8 +258,9 @@ export function ClienteDrawer({
           <div className="border-t border-gray-200 bg-white px-4 py-3">
             <button
               onClick={excluir}
-              className="text-xs text-gray-400 underline hover:text-claro-red"
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-claro-red"
             >
+              <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
               Excluir dados deste cliente (LGPD art. 18)
             </button>
           </div>
@@ -272,6 +276,15 @@ function MiniStat({ valor, rotulo, destaque }: { valor: number; rotulo: string; 
       <p className={`text-2xl font-bold tabular-nums ${destaque ? "text-claro-red" : "text-gray-900"}`}>{valor}</p>
       <p className="text-[10px] uppercase tracking-wide text-gray-400">{rotulo}</p>
     </div>
+  );
+}
+
+function TituloSecao({ icone: Icone, children }: { icone: LucideIcon; children: React.ReactNode }) {
+  return (
+    <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+      <Icone className="h-3.5 w-3.5" strokeWidth={2} />
+      {children}
+    </h4>
   );
 }
 

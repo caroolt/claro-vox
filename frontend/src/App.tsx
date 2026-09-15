@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Headset, MessageCircle, type LucideIcon } from "lucide-react";
 import { ChatSimulator } from "./components/ChatSimulator";
 import { AgentPanel } from "./components/agent-panel/AgentPanel";
 import { LoginScreen } from "./components/auth/LoginScreen";
@@ -73,15 +74,15 @@ function App() {
       </header>
 
       <nav className="bg-white border-b border-gray-200 px-4 flex gap-1">
-        <TabButton ativo={aba === "cliente"} onClick={() => setAba("cliente")}>
+        <TabButton ativo={aba === "cliente"} onClick={() => setAba("cliente")} icone={MessageCircle}>
           Simulador de Cliente
         </TabButton>
-        <TabButton ativo={aba === "atendente"} onClick={() => setAba("atendente")}>
+        <TabButton ativo={aba === "atendente"} onClick={() => setAba("atendente")} icone={Headset}>
           Painel do Atendente (Vox Briefing)
         </TabButton>
       </nav>
 
-      <main className="flex-1 overflow-hidden">
+      <main className="min-h-0 flex-1 overflow-hidden">
         {aba === "cliente" ? (
           <ChatSimulator />
         ) : usuario ? (
@@ -94,14 +95,25 @@ function App() {
   );
 }
 
-function TabButton({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+function TabButton({
+  ativo,
+  onClick,
+  icone: Icone,
+  children,
+}: {
+  ativo: boolean;
+  onClick: () => void;
+  icone: LucideIcon;
+  children: React.ReactNode;
+}) {
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-3 text-sm font-medium border-b-2 transition ${
+      className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition ${
         ativo ? "border-claro-red text-claro-red" : "border-transparent text-gray-500 hover:text-gray-700"
       }`}
     >
+      <Icone className="h-4 w-4" strokeWidth={2} />
       {children}
     </button>
   );

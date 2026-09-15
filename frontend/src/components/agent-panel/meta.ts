@@ -1,3 +1,4 @@
+import { Globe, MessageCircle, Phone, Smartphone, type LucideIcon } from "lucide-react";
 import type { Segment } from "../charts";
 
 // Chaves da paleta de status (STATUS_HEX em ../charts) — repetidas aqui como
@@ -35,11 +36,11 @@ export const TOM_META: Record<string, { label: string; status: StatusKey; badge:
 };
 export const TOM_ORDEM = ["hostil", "frustracao", "urgencia", "satisfacao", "neutro"];
 
-export const CANAL_META: Record<string, { label: string; icone: string }> = {
-  whatsapp: { label: "WhatsApp", icone: "💬" },
-  site: { label: "Site", icone: "🌐" },
-  app: { label: "App Claro", icone: "📱" },
-  voz: { label: "Central de Voz", icone: "☎️" },
+export const CANAL_META: Record<string, { label: string; icone: LucideIcon }> = {
+  whatsapp: { label: "WhatsApp", icone: MessageCircle },
+  site: { label: "Site", icone: Globe },
+  app: { label: "App Claro", icone: Smartphone },
+  voz: { label: "Central de Voz", icone: Phone },
 };
 export const CANAL_ORDEM = ["whatsapp", "site", "app", "voz"];
 
