@@ -1,3 +1,4 @@
+import { ArrowRightLeft, Gauge, MessageSquare, Radio, ScrollText } from "lucide-react";
 import type { AuditoriaEntry, Metrics } from "../../types";
 import { CAT_HEX, CompareBars, Meter, StackedBar, STATUS_HEX } from "../charts";
 import {
@@ -60,15 +61,22 @@ export function VisaoGeralTab({
             value={`${metrics.taxa_transbordo_pct}%`}
             sub={`${metrics.total_transbordos}/${metrics.total_sessoes} sessões → humano`}
             destaque={acimaDaMeta}
+            icone={ArrowRightLeft}
           >
             <Meter pct={metrics.taxa_transbordo_pct} bom={20} critico={45} meta={META_TRANSBORDO} />
           </KpiCard>
-          <KpiCard label="Sessões ativas" value={sessoesAtivas} sub="não encerradas" />
-          <KpiCard label="Mensagens trocadas" value={metrics.total_mensagens} sub="cliente + Vox + atendente" />
+          <KpiCard label="Sessões ativas" value={sessoesAtivas} sub="não encerradas" icone={Radio} />
+          <KpiCard
+            label="Mensagens trocadas"
+            value={metrics.total_mensagens}
+            sub="cliente + Vox + atendente"
+            icone={MessageSquare}
+          />
           <KpiCard
             label="Disponibilidade (SLO)"
             value={`${metrics.disponibilidade_slo_pct}%`}
             sub={`p95 alvo ${metrics.latencia_p95_alvo_ms} ms`}
+            icone={Gauge}
           />
         </div>
       </section>
@@ -127,7 +135,10 @@ export function VisaoGeralTab({
         <SecaoRotulo>Auditoria</SecaoRotulo>
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h4 className="text-sm font-medium text-gray-700">Ações sensíveis recentes</h4>
+            <h4 className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+              <ScrollText className="h-4 w-4 text-gray-400" strokeWidth={2} />
+              Ações sensíveis recentes
+            </h4>
             <span className="text-[11px] text-gray-400">últimos {auditoria.length} registros</span>
           </div>
           {auditoria.length === 0 ? (

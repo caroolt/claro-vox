@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
+import { BookOpen, Download } from "lucide-react";
 import { civ } from "../../api";
-import logoClaroVox from "../../assets/claro-vox-logo.png";
 import type { AuditoriaEntry, Briefing, KnowledgeItem, Metrics, SessaoResumo, Usuario } from "../../types";
 import { useBriefingSocket } from "../../useBriefingSocket";
 import { FILTROS_VAZIOS, type FiltrosOperacao } from "./meta";
@@ -12,8 +12,9 @@ import { ClienteDrawer } from "./ClienteDrawer";
 import { BriefingModal } from "./BriefingModal";
 import { SessionChatPanel } from "./SessionChatPanel";
 import { AtendentesTab } from "./AtendentesTab";
+import { Sidebar } from "./Sidebar";
 
-type Aba = "geral" | "operacao" | "clientes" | "kb" | "atendentes";
+export type Aba = "geral" | "operacao" | "clientes" | "kb" | "atendentes";
 
 const ABAS_POR_ROLE: Record<Usuario["role"], { id: Aba; rotulo: string }[]> = {
   // Admin vê todas as abas do Vox Briefing + a gestão de atendentes.
@@ -125,33 +126,32 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
     }
   }
 
+  const pendentes = fila.filter((b) => !b.encerrado_em).length;
+  const rotuloAba = ABAS.find((a) => a.id === aba)?.rotulo || "";
+
   return (
-    <div className="h-full overflow-y-auto bg-claro-gray-light">
-      {/* Cabeçalho com identidade da marca */}
-      <div className="sticky top-0 z-20 border-b border-gray-200 bg-claro-gray-light px-4 pb-2 pt-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <span className="inline-flex rounded-lg bg-claro-black px-2 py-1 shadow-sm">
-              <img src={logoClaroVox} alt="Claro Vox" className="h-5 w-auto" />
-            </span>
-            <p className="text-[11px] leading-tight text-gray-400">Vox Briefing</p>
-          </div>
+    <div className="flex h-full">
+      <Sidebar
+        abas={ABAS}
+        abaAtiva={aba}
+        onSelecionar={setAba}
+        pendentes={pendentes}
+        usuario={usuario}
+        onSair={onSair}
+      />
+
+      <div className="flex-1 overflow-y-auto bg-claro-gray-light">
+        {/* Cabeçalho da página — título da aba atual + status ao vivo */}
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-gray-200 bg-claro-gray-light/95 px-6 py-3.5 backdrop-blur">
+          <h2 className="text-base font-semibold text-gray-900">{rotuloAba}</h2>
           <div className="flex items-center gap-2">
-            <span className="hidden text-[11px] text-gray-400 sm:inline">
-              {usuario.nome} · <span className="uppercase">{usuario.role}</span>
-            </span>
-            <button
-              onClick={onSair}
-              className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-claro-red hover:text-claro-red"
-            >
-              Sair
-            </button>
             <button
               onClick={exportarCsv}
               disabled={exportandoCsv}
-              className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-claro-red hover:text-claro-red disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-claro-red hover:text-claro-red disabled:opacity-50"
             >
-              {exportandoCsv ? "exportando…" : "⬇ Exportar CSV"}
+              <Download className="h-3.5 w-3.5" strokeWidth={2} />
+              {exportandoCsv ? "exportando…" : "Exportar CSV"}
             </button>
             {atualizadoEm && (
               <span className="hidden text-[11px] text-gray-400 sm:inline">
@@ -174,31 +174,8 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
           </div>
         </div>
 
-        {/* Sub-abas do painel */}
-        <nav className="mt-2 flex gap-1">
-          {ABAS.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => setAba(a.id)}
-              className={`rounded-t-lg border-b-2 px-3 py-2 text-sm font-medium transition ${
-                aba === a.id
-                  ? "border-claro-red text-claro-red"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {a.rotulo}
-              {a.id === "operacao" && fila.filter((b) => !b.encerrado_em).length > 0 && (
-                <span className="ml-1.5 rounded-full bg-claro-red px-1.5 text-[10px] text-white">
-                  {fila.filter((b) => !b.encerrado_em).length}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      <div className="p-4">
-        {aba === "geral" && (
+        <div className="p-6">
+          {aba === "geral" && (
           <VisaoGeralTab
             metrics={metrics}
             sessoesAtivas={sessoes.length}
@@ -227,7 +204,10 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
 
         {aba === "kb" && (
           <section className="rounded-xl border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-medium text-gray-700">Base de conhecimento (RAG)</h3>
+            <h3 className="mb-3 flex items-center gap-1.5 font-medium text-gray-700">
+              <BookOpen className="h-4 w-4 text-gray-400" strokeWidth={2} />
+              Base de conhecimento (RAG)
+            </h3>
             <div className="grid gap-2 md:grid-cols-2">
               {kb.map((item) => (
                 <div key={item.id} className="rounded-lg border border-gray-100 p-2.5">
@@ -240,7 +220,8 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
           </section>
         )}
 
-        {aba === "atendentes" && <AtendentesTab usuarioLogadoId={usuario.id} />}
+          {aba === "atendentes" && <AtendentesTab usuarioLogadoId={usuario.id} />}
+        </div>
       </div>
 
       {briefingAberto && (

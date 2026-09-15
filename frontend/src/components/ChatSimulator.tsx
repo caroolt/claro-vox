@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Bot, Globe, MessageCircle, Phone, Smartphone, Trash2, type LucideIcon } from "lucide-react";
 import { civ, orchestrator } from "../api";
 import logoClaroVox from "../assets/claro-vox-logo.png";
 import type { Canal } from "../types";
@@ -15,11 +16,11 @@ interface Bubble {
   nps?: { alvo: "ia" | "atendente"; briefingId?: string | null };
 }
 
-const CANAIS: { valor: Canal; rotulo: string; icone: string }[] = [
-  { valor: "whatsapp", rotulo: "WhatsApp", icone: "💬" },
-  { valor: "site", rotulo: "Site", icone: "🌐" },
-  { valor: "app", rotulo: "App Claro", icone: "📱" },
-  { valor: "voz", rotulo: "Central de Voz", icone: "☎️" },
+const CANAIS: { valor: Canal; rotulo: string; icone: LucideIcon }[] = [
+  { valor: "whatsapp", rotulo: "WhatsApp", icone: MessageCircle },
+  { valor: "site", rotulo: "Site", icone: Globe },
+  { valor: "app", rotulo: "App Claro", icone: Smartphone },
+  { valor: "voz", rotulo: "Central de Voz", icone: Phone },
 ];
 
 function uid() {
@@ -190,13 +191,14 @@ export function ChatSimulator() {
             <button
               key={c.valor}
               onClick={() => trocarCanal(c.valor)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition ${
                 canal === c.valor
                   ? "bg-claro-red text-white border-claro-red"
                   : "bg-white text-gray-600 border-gray-300 hover:border-claro-red"
               }`}
             >
-              {c.icone} {c.rotulo}
+              <c.icone className="h-3.5 w-3.5" strokeWidth={2.25} />
+              {c.rotulo}
             </button>
           ))}
         </div>
@@ -208,7 +210,11 @@ export function ChatSimulator() {
             </span>
           )}
           {clienteId && (
-            <button onClick={excluirDados} className="text-xs text-gray-400 hover:text-claro-red underline">
+            <button
+              onClick={excluirDados}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-claro-red"
+            >
+              <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
               Excluir meus dados (LGPD)
             </button>
           )}
@@ -258,22 +264,29 @@ export function ChatSimulator() {
         )}
         {bubbles.map((b) => (
           <div key={b.id} className="space-y-3">
-            <div className={`flex ${b.de === "cliente" ? "justify-end" : "justify-start"}`}>
+            <div className={`flex items-end gap-2 ${b.de === "cliente" ? "justify-end" : "justify-start"}`}>
               {b.de === "sistema" ? (
                 <div className="mx-auto text-xs text-center text-gray-500 bg-gray-200 rounded-full px-3 py-1">{b.texto}</div>
               ) : (
-                <div
-                  className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                    b.de === "cliente"
-                      ? "bg-claro-red text-white rounded-br-sm"
-                      : b.de === "atendente"
-                      ? "bg-claro-red-light text-gray-800 rounded-bl-sm border border-claro-red/20"
-                      : "bg-white text-gray-800 rounded-bl-sm border border-gray-200"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{b.texto}</p>
-                  {b.meta && <p className={`mt-1 text-[11px] ${b.de === "cliente" ? "text-red-100" : "text-gray-400"}`}>{b.meta}</p>}
-                </div>
+                <>
+                  {b.de === "vox" && (
+                    <span className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-claro-black text-white">
+                      <Bot className="h-3.5 w-3.5" strokeWidth={2} />
+                    </span>
+                  )}
+                  <div
+                    className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                      b.de === "cliente"
+                        ? "bg-claro-red text-white rounded-br-sm"
+                        : b.de === "atendente"
+                        ? "bg-claro-red-light text-gray-800 rounded-bl-sm border border-claro-red/20"
+                        : "bg-white text-gray-800 rounded-bl-sm border border-gray-200"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{b.texto}</p>
+                    {b.meta && <p className={`mt-1 text-[11px] ${b.de === "cliente" ? "text-red-100" : "text-gray-400"}`}>{b.meta}</p>}
+                  </div>
+                </>
               )}
             </div>
             {b.nps && sessaoId && (
