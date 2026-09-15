@@ -82,6 +82,14 @@ contratosRouter.post("/", h(async (req, res) => {
   );
   await audit("orchestrator", "contrato.confirmado", contratoRes.rows[0].id);
 
+  // Regra A do motor de fraude (Seção "Camada de Fraude"): volume de linhas
+  // pré-pagas confirmadas no mesmo CPF acima do limite configurável. Não
+  // bloqueia a contratação (já confirmada acima) — gera um alerta de alta
+  // confiança para investigação, com a evidência que embasa a decisão (XAI).
+  if (tipo_plano === "pre-pago") {
+    await checarRegraAVolumeCpf(cliente.id, cliente.nome);
+  }
+
   res.status(201).json({
     contrato_id: contratoRes.rows[0].id,
     protocolo,
@@ -89,3 +97,42 @@ contratosRouter.post("/", h(async (req, res) => {
     cliente: { id: cliente.id, nome: cliente.nome },
   });
 }));
+
+async function checarRegraAVolumeCpf(clienteId: string, clienteNome: string) {
+  const [limiarRes, contagemRes] = await Promise.all([
+    pool.query(`SELECT valor FROM configuracao WHERE chave = 'limiar_fraude_pre_pago'`),
+    pool.query(
+      `SELECT COUNT(*) AS total, array_agg(protocolo) AS protocolos FROM contrato
+       WHERE cliente_id = $1 AND tipo_plano = 'pre-pago' AND status = 'confirmado'`,
+      [clienteId]
+    ),
+  ]);
+  const limiar = limiarRes.rows.length ? Number(limiarRes.rows[0].valor) : 3;
+  const total = Number(contagemRes.rows[0]?.total || 0);
+  if (total <= limiar) return;
+
+  const explicacao = `${clienteNome} tem ${total} linhas pré-pagas confirmadas no próprio CPF, acima do limite configurado de ${limiar}.`;
+  const evidencia = {
+    cliente_nome: clienteNome,
+    total_linhas_pre_pago: total,
+    protocolos: contagemRes.rows[0].protocolos,
+    limiar,
+  };
+  const existente = await pool.query(
+    `SELECT id FROM alerta_fraude WHERE regra = 'A_volume_cpf' AND clientes_ids = $1::uuid[] AND status = 'aberto'`,
+    [[clienteId]]
+  );
+  if (existente.rows.length) {
+    await pool.query(`UPDATE alerta_fraude SET evidencia = $1, explicacao = $2, criado_em = now() WHERE id = $3`, [
+      JSON.stringify(evidencia),
+      explicacao,
+      existente.rows[0].id,
+    ]);
+  } else {
+    await pool.query(
+      `INSERT INTO alerta_fraude (regra, clientes_ids, evidencia, explicacao, confianca) VALUES ('A_volume_cpf', $1::uuid[], $2, $3, 'alta')`,
+      [[clienteId], JSON.stringify(evidencia), explicacao]
+    );
+  }
+  await audit("civ", "fraude.alerta.gerado", clienteId);
+}

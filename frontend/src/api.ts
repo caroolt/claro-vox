@@ -1,9 +1,12 @@
 import type {
+  AlertaFraude,
   AuditoriaEntry,
   Briefing,
   ClienteAlerta,
   ClienteDetalhe,
   ClienteResumo,
+  Configuracao,
+  GrafoFraude,
   KnowledgeItem,
   LoginConcluido,
   LoginIniciado,
@@ -49,20 +52,20 @@ async function req<T>(url: string, opts?: RequestInit): Promise<T> {
 
 // -------- Orquestrador --------
 export const orchestrator = {
-  coldstartStart: (canal: string, canal_conversa_id: string, mensagem_inicial?: string) =>
+  coldstartStart: (canal: string, canal_conversa_id: string, mensagem_inicial?: string, dispositivo_id?: string) =>
     req<{ sessao_id: string; estado: string; proxima_pergunta: string }>(
       `${ORCH_URL}/v1/orchestrator/coldstart/start`,
-      { method: "POST", body: JSON.stringify({ canal, canal_conversa_id, mensagem_inicial }) }
+      { method: "POST", body: JSON.stringify({ canal, canal_conversa_id, mensagem_inicial, dispositivo_id }) }
     ),
   coldstartAnswer: (sessao_id: string, resposta: string) =>
     req<any>(`${ORCH_URL}/v1/orchestrator/coldstart/answer`, {
       method: "POST",
       body: JSON.stringify({ sessao_id, resposta }),
     }),
-  coldstartReconhecer: (canal: string, cpf: string) =>
+  coldstartReconhecer: (canal: string, cpf: string, dispositivo_id?: string) =>
     req<any>(`${ORCH_URL}/v1/orchestrator/coldstart/reconhecer`, {
       method: "POST",
-      body: JSON.stringify({ canal, cpf }),
+      body: JSON.stringify({ canal, cpf, dispositivo_id }),
     }),
   message: (sessao_id: string, canal: string, conteudo: string) =>
     req<any>(`${ORCH_URL}/v1/orchestrator/message`, {
@@ -165,6 +168,24 @@ export const usuarios = {
     }>
   ) => req<UsuarioAdmin>(`${CIV_URL}/v1/usuarios/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   excluir: (id: string) => req<{ ok: boolean }>(`${CIV_URL}/v1/usuarios/${id}`, { method: "DELETE" }),
+};
+
+// -------- Configurações (parâmetros editáveis, aba exclusiva do admin) --------
+export const configuracoes = {
+  listar: () => req<Configuracao[]>(`${CIV_URL}/v1/configuracoes`),
+  atualizar: (chave: string, valor: number) =>
+    req<Configuracao>(`${CIV_URL}/v1/configuracoes/${chave}`, { method: "PUT", body: JSON.stringify({ valor }) }),
+};
+
+// -------- Detecção de fraude cross-canal (aba "Fraude", exclusiva do admin) --------
+export const fraude = {
+  alertas: () => req<AlertaFraude[]>(`${CIV_URL}/v1/fraude/alertas`),
+  grafo: () => req<GrafoFraude>(`${CIV_URL}/v1/fraude/grafo`),
+  atualizarAlerta: (id: string, status: "revisado" | "descartado") =>
+    req<{ id: string; status: string }>(`${CIV_URL}/v1/fraude/alertas/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }),
 };
 
 export function wsBriefingUrl(): string {

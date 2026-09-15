@@ -184,6 +184,49 @@ export interface ClienteAlerta {
   prioridade: boolean;
 }
 
+export interface Configuracao {
+  chave: string;
+  valor: number;
+  descricao: string | null;
+  atualizado_em: string | null;
+  atualizado_por: string | null;
+}
+
+export type RegraFraude = "A_volume_cpf" | "B_dispositivo_ip" | "C_estilo_escrita";
+export type ConfiancaFraude = "alta" | "media" | "baixa";
+
+export interface AlertaFraude {
+  id: string;
+  regra: RegraFraude;
+  clientes_ids: string[];
+  evidencia: Record<string, unknown>;
+  explicacao: string;
+  confianca: ConfiancaFraude;
+  status: "aberto" | "revisado" | "descartado";
+  criado_em: string;
+}
+
+export interface GrafoFraudeNo {
+  id: string;
+  nome: string;
+}
+
+export interface GrafoFraudeAresta {
+  id: string;
+  origem: string;
+  destino: string;
+  alerta_id: string;
+  regra: RegraFraude;
+  confianca: ConfiancaFraude;
+  explicacao: string;
+}
+
+export interface GrafoFraude {
+  nos: GrafoFraudeNo[];
+  arestas: GrafoFraudeAresta[];
+  alertas_volume: AlertaFraude[];
+}
+
 export interface ClienteDetalhe {
   cliente: {
     id: string;

@@ -42,6 +42,14 @@ CREATE TABLE IF NOT EXISTS sessao (
   -- também ganha o seu próprio protocolo). Gerado assim que o Cold Start
   -- termina e a sessão vira ATIVA.
   protocolo        TEXT UNIQUE,
+  -- Sinais cross-identidade para detecção de fraude (Seção "Camada de
+  -- Fraude"): permitem ligar clientes com CPFs DIFERENTES quando usam o
+  -- mesmo aparelho ou a mesma origem de rede — CPF sozinho não pega isso,
+  -- já que cada CPF só pode pertencer a um `cliente` (ver cliente.cpf_hash).
+  -- dispositivo_id é gerado/persistido no navegador do simulador (proxy de
+  -- aplicação para o que um identificador de aparelho real daria).
+  dispositivo_id   TEXT,
+  ip_origem        TEXT,
   criado_em        TIMESTAMPTZ NOT NULL DEFAULT now(),
   atualizado_em    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -163,6 +171,45 @@ CREATE TABLE IF NOT EXISTS contrato (
   criado_em        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Parâmetros operacionais editáveis pelo admin no painel (aba
+-- "Configurações") — em vez de constantes fixas no código, para que metas
+-- de negócio (meta de transbordo) e limiares de detecção de fraude possam
+-- ser ajustados sem deploy. Toda alteração é registrada em `auditoria`.
+CREATE TABLE IF NOT EXISTS configuracao (
+  chave          TEXT PRIMARY KEY,
+  valor          NUMERIC NOT NULL,
+  descricao      TEXT,
+  atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_por UUID REFERENCES usuario(id)
+);
+
+-- Alertas do motor de detecção de fraude cross-canal (Seção "Camada de
+-- Fraude"). Cada linha carrega não só o veredito, mas a evidência bruta e
+-- uma explicação legível (camada de explicabilidade/XAI) — nunca um score
+-- opaco. `confianca` reflete a natureza da regra que disparou o alerta:
+-- 'alta' para sinais determinísticos (volume por CPF, dispositivo/IP
+-- compartilhado), 'baixa'/'media' para sinais probabilísticos (estilo de
+-- escrita), que nunca devem bloquear uma contratação sozinhos.
+CREATE TABLE IF NOT EXISTS alerta_fraude (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  regra          TEXT NOT NULL CHECK (regra IN ('A_volume_cpf','B_dispositivo_ip','C_estilo_escrita')),
+  clientes_ids   UUID[] NOT NULL,
+  evidencia      JSONB NOT NULL,
+  explicacao     TEXT NOT NULL,
+  confianca      TEXT NOT NULL CHECK (confianca IN ('alta','media','baixa')),
+  status         TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto','revisado','descartado')),
+  criado_em      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessao_estado ON sessao(estado);
 CREATE INDEX IF NOT EXISTS idx_mensagem_sessao ON mensagem(sessao_id);
 CREATE INDEX IF NOT EXISTS idx_cliente_cpf_hash ON cliente(cpf_hash);
+CREATE INDEX IF NOT EXISTS idx_sessao_dispositivo ON sessao(dispositivo_id);
+CREATE INDEX IF NOT EXISTS idx_sessao_ip ON sessao(ip_origem);
+CREATE INDEX IF NOT EXISTS idx_alerta_fraude_status ON alerta_fraude(status);
+
+INSERT INTO configuracao (chave, valor, descricao) VALUES
+  ('meta_transbordo_pct', 25, 'Meta (%) da taxa de transbordo — acima disso a Visão geral destaca o indicador'),
+  ('limiar_fraude_pre_pago', 3, 'Nº de contratos pré-pagos confirmados por cliente acima do qual um novo pedido gera alerta (Regra A)'),
+  ('limiar_similaridade_estilo', 0.85, 'Similaridade mínima (0-1) do vetor estilométrico entre clientes de CPFs diferentes para gerar alerta (Regra C)')
+ON CONFLICT (chave) DO NOTHING;

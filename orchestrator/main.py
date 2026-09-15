@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -48,6 +48,11 @@ class ColdstartStartIn(BaseModel):
     canal: str
     canal_conversa_id: str
     mensagem_inicial: Optional[str] = None
+    # Identificador do "aparelho" gerado/persistido no navegador do
+    # simulador — sinal cross-identidade da camada de detecção de fraude
+    # (ver civ/schema.sql, tabela alerta_fraude): permite ligar clientes de
+    # CPFs diferentes que compartilham o mesmo dispositivo.
+    dispositivo_id: Optional[str] = None
 
 
 class ColdstartAnswerIn(BaseModel):
@@ -58,6 +63,7 @@ class ColdstartAnswerIn(BaseModel):
 class ReconhecerIn(BaseModel):
     canal: str
     cpf: str
+    dispositivo_id: Optional[str] = None
 
 
 # ----------------------------------------------------------------------
@@ -155,9 +161,14 @@ async def health():
 # gravação de estado à CIV.
 # ----------------------------------------------------------------------
 @app.post("/v1/orchestrator/coldstart/start")
-async def coldstart_start(body: ColdstartStartIn):
+async def coldstart_start(body: ColdstartStartIn, request: Request):
+    # O Orquestrador é o primeiro serviço a receber a requisição do
+    # navegador (o simulador fala com ele, não direto com a CIV), então é
+    # aqui que a origem de rede real do cliente pode ser capturada — ela
+    # vira o sinal "ip_origem" da camada de detecção de fraude.
+    payload = {**body.model_dump(), "ip_origem": request.client.host if request.client else None}
     try:
-        return await _civ_post("/v1/coldstart/start", body.model_dump())
+        return await _civ_post("/v1/coldstart/start", payload)
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
 
@@ -171,9 +182,10 @@ async def coldstart_answer(body: ColdstartAnswerIn):
 
 
 @app.post("/v1/orchestrator/coldstart/reconhecer")
-async def coldstart_reconhecer(body: ReconhecerIn):
+async def coldstart_reconhecer(body: ReconhecerIn, request: Request):
+    payload = {**body.model_dump(), "ip_origem": request.client.host if request.client else None}
     try:
-        return await _civ_post("/v1/coldstart/reconhecer", body.model_dump())
+        return await _civ_post("/v1/coldstart/reconhecer", payload)
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
 

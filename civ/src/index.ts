@@ -13,6 +13,8 @@ import { authRouter } from "./routes/auth";
 import { usuariosRouter } from "./routes/usuarios";
 import { contratosRouter } from "./routes/contratos";
 import { auditoriaRouter } from "./routes/auditoria";
+import { configuracoesRouter } from "./routes/configuracoes";
+import { fraudeRouter } from "./routes/fraude";
 import { initWs } from "./ws";
 import { pool, ensureSchema } from "./db";
 
@@ -40,6 +42,8 @@ app.use("/v1/auth", authRouter);
 app.use("/v1/usuarios", usuariosRouter);
 app.use("/v1/contratos", contratosRouter);
 app.use("/v1/auditoria", auditoriaRouter);
+app.use("/v1/configuracoes", configuracoesRouter);
+app.use("/v1/fraude", fraudeRouter);
 
 // Middleware de erro global — qualquer exceção das rotas (via asyncHandler)
 // vira uma resposta JSON 500 em vez de derrubar o processo.
