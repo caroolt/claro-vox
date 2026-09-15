@@ -57,8 +57,8 @@ export function LoginScreen({ onEntrar }: { onEntrar: (token: string, usuario: U
         <div className="mb-5 flex justify-center">
           <img src={logoClaroVox} alt="Claro Vox" className="h-7 w-auto" />
         </div>
-        <h2 className="mb-1 text-center text-sm font-semibold text-gray-700">Painel do Atendente — Vox Briefing</h2>
-        <p className="mb-5 text-center text-xs text-gray-400">Acesso restrito — login + verificação em duas etapas</p>
+        <h2 className="mb-1 text-center text-sm font-semibold text-gray-700">Vox Briefing</h2>
+        <p className="mb-5 text-center text-xs text-gray-400">Acesso restrito</p>
 
         {etapa === "credenciais" && (
           <form onSubmit={enviarCredenciais} className="space-y-3">
@@ -90,7 +90,7 @@ export function LoginScreen({ onEntrar }: { onEntrar: (token: string, usuario: U
         {etapa === "mfa_configuracao" && (
           <form onSubmit={confirmarCodigo} className="space-y-3">
             <p className="text-xs text-gray-500">
-              Primeiro acesso — escaneie este QR code em um app autenticador (Google Authenticator, Authy, etc.) e
+              Primeiro acesso, escaneie este QR code em um app autenticador (Google Authenticator, Authy, etc.) e
               depois digite o código de 6 dígitos gerado.
             </p>
             <div className="flex justify-center">

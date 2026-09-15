@@ -151,49 +151,12 @@ front-end:
 | `admin@clarovox.com` | `ClaroVox@Admin1` | admin |
 | `atendente@clarovox.com` | `ClaroVox@Atendente1` | atendente |
 
-Nenhum dos dois tem o MFA configurado ainda — no primeiro login de cada um,
+Nenhum dos dois tem o MFA configurado, no primeiro login de cada um,
 escaneie o QR exibido na tela com um app autenticador e digite o código
 gerado para concluir a configuração.
 
 **Aviso de MVP:** como nas demais simplificações documentadas acima, essas
-credenciais/segredos existem só para rodar o projeto localmente; troque
-`JWT_SECRET` (e as senhas dos usuários) antes de qualquer uso além da
-demonstração acadêmica.
-
-## Roteiro sugerido para o vídeo (6–8 minutos)
-
-Este roteiro é uma sugestão para a equipe gravar a demonstração — **não é
-um pitch**: a ideia é mostrar o sistema funcionando e explicar as
-tecnologias/arquitetura ao longo da demonstração, com todos os integrantes
-aparecendo com câmera aberta.
-
-1. **Abertura (30s)** — todos os integrantes se apresentam rapidamente; um
-   deles compartilha a tela.
-2. **Arquitetura em 60s** — mostrar o diagrama (documento de arquitetura) e
-   explicar em uma frase cada camada: Frontend, Orquestrador (Python/
-   FastAPI), CIV (Node/Express), Postgres+pgvector, Redis, WebSocket.
-3. **Cold Start (RF010/011) — ~90s** — na aba "Simulador de Cliente",
-   escolher o canal WhatsApp, clicar em "Iniciar conversa" e responder às
-   perguntas (já é cliente? nome? CPF/telefone?) até a sessão ficar ATIVA.
-4. **Consulta com RAG (venda/portfólio) — ~45s** — perguntar sobre planos
-   (ex.: "quero um plano com bastante GB de internet") e mostrar que a
-   resposta vem da base de conhecimento armazenada no Postgres/pgvector.
-5. **Reconhecimento cross-canal (RF004) — ~60s** — trocar para o canal
-   "Central de Voz", informar o mesmo CPF e mostrar que o Vox reconhece o
-   cliente e recupera o contexto anterior sem repetir perguntas.
-6. **Transbordo com briefing (RF007-009) — ~90s** — simular uma cobrança
-   contestada ("essa cobrança na minha fatura está errada, não reconheço
-   esse valor") seguida de uma mensagem de frustração; mostrar o aviso de
-   transbordo acionado.
-7. **Painel do Atendente / Vox Briefing — ~60s** — trocar para a aba do
-   painel, mostrar a fila de transbordo atualizando em tempo real via
-   WebSocket, abrir o briefing (resumo da jornada, tom emocional, sugestão
-   de resolução), clicar em "Assumir" e depois "Encerrar".
-8. **LGPD (~20s)** — no simulador, clicar em "Excluir meus dados" e
-   explicar que isso implementa o art. 18 da LGPD (direito de exclusão).
-9. **Fechamento (~15s)** — mencionar as simplificações assumidas no MVP
-   (embeddings locais determinísticos + fallback de LLM por regras) e por
-   que essas escolhas foram feitas para esta entrega.
+credenciais/segredos existem só para rodar o projeto localmente.
 
 ## Estrutura do repositório
 

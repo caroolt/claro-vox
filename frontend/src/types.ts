@@ -168,6 +168,22 @@ export interface Transcript {
   mensagens: { remetente: "cliente" | "vox" | "atendente"; conteudo: string; timestamp: string }[];
 }
 
+export interface AuditoriaEntry {
+  id: string;
+  ator: string;
+  acao: string;
+  recurso_id: string | null;
+  timestamp: string;
+}
+
+export interface ClienteAlerta {
+  cliente_id: string;
+  hostil: boolean;
+  urgente: boolean;
+  chamados_semana: number;
+  prioridade: boolean;
+}
+
 export interface ClienteDetalhe {
   cliente: {
     id: string;

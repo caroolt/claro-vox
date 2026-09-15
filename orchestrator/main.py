@@ -66,44 +66,62 @@ class ReconhecerIn(BaseModel):
 # ----------------------------------------------------------------------
 def _resposta_template(categoria: str, tom: Optional[str], trechos: list, nome_cliente: Optional[str]) -> str:
     saud = f"{nome_cliente}, " if nome_cliente else ""
+    # Trecho da base de conhecimento mais relevante para a mensagem atual
+    # (já filtrado e re-ranqueado em rag.py). Quando existe, ele entra na
+    # resposta no lugar da frase fixa, para a resposta variar de acordo com
+    # o que o cliente perguntou em vez de repetir sempre o mesmo texto por
+    # categoria.
+    trecho_txt = trechos[0].get("conteudo") if trechos else None
 
     if categoria == "atendimento/cobranca_contestada":
+        detalhe = f" {trecho_txt}" if trecho_txt else ""
         return (
-            f"{saud}entendo — vou verificar a cobrança na sua fatura mais recente. "
+            f"{saud}entendo, vou verificar a cobrança na sua fatura mais recente.{detalhe} "
             "Não encontrei um motivo técnico óbvio para o valor divergente aqui no meu histórico automático. "
             "Vou te transferir para um especialista humano com todo o seu contexto, para não precisar repetir nada."
         )
     if categoria == "atendimento/2via_fatura":
-        return f"{saud}sua 2ª via já está disponível. Vou te enviar o link por aqui mesmo — algo mais que eu possa ajudar?"
+        if trecho_txt:
+            return f"{saud}{trecho_txt} Precisa de mais alguma coisa?"
+        return f"{saud}sua 2ª via já está disponível. Vou te enviar o link por aqui mesmo, algo mais que eu possa ajudar?"
     if categoria == "atendimento/consulta_fatura":
+        if trecho_txt:
+            return f"{saud}{trecho_txt} Quer que eu detalhe algum item específico?"
         return f"{saud}posso te ajudar com sua fatura. Você quer o valor, a data de vencimento ou o detalhamento dos serviços?"
     if categoria == "atendimento/suporte_tecnico":
+        if trecho_txt:
+            return f"{saud}sinto muito pelo transtorno. {trecho_txt}"
         return (
             f"{saud}sinto muito pelo transtorno. Vou rodar um diagnóstico remoto no seu sinal agora. "
             "Enquanto isso, já tenta reiniciar o roteador? Costuma resolver na maioria dos casos."
         )
     if categoria == "atendimento/reagendar_visita":
-        return f"{saud}sem problemas, vamos reagendar. Tenho horários amanhã de manhã ou depois de amanhã à tarde — qual prefere?"
+        if trecho_txt:
+            return f"{saud}{trecho_txt} Qual data e período funcionam melhor pra você?"
+        return f"{saud}sem problemas, vamos reagendar. Tenho horários amanhã de manhã ou depois de amanhã à tarde, qual prefere?"
     if categoria == "atendimento/alterar_plano":
+        if trecho_txt:
+            return f"{saud}{trecho_txt} Quer que eu já prepare essa mudança?"
         return f"{saud}posso te mostrar as opções de planos disponíveis para o seu perfil. Quer mais dados, mais minutos, ou os dois?"
     if categoria == "venda/cancelamento":
+        detalhe = f" {trecho_txt}" if trecho_txt else ""
         return (
-            f"{saud}antes de seguir com o cancelamento, queria entender o que está acontecendo — "
-            "às vezes consigo resolver o motivo sem precisar cancelar. Pode me contar o que houve?"
+            f"{saud}antes de seguir com o cancelamento, queria entender o que está acontecendo.{detalhe} "
+            "Às vezes consigo resolver o motivo sem precisar cancelar. Pode me contar o que houve?"
         )
     if categoria == "atendimento/negociar_divida":
+        if trecho_txt:
+            return f"{saud}{trecho_txt} Prefere parcelar ou pagar à vista com desconto?"
         return f"{saud}posso verificar condições de negociação para o seu débito em aberto. Prefere parcelar ou pagar à vista com desconto?"
     if categoria == "venda/consulta_portfolio":
-        if trechos:
-            top = trechos[0]
-            return f"{saud}sobre isso: {top.get('conteudo')} Quer que eu detalhe outro plano ou já seguimos com esse?"
-        return f"{saud}temos algumas opções de planos que podem te interessar — me conta se busca mais internet, mais minutos, ou um combo."
+        if trecho_txt:
+            return f"{saud}sobre isso: {trecho_txt} Quer que eu detalhe outro plano ou já seguimos com esse?"
+        return f"{saud}temos algumas opções de planos que podem te interessar. Me conta se busca mais internet, mais minutos, ou um combo."
     if categoria == "atendimento/atendente_humano":
         return f"{saud}claro, já vou te conectar com um atendente humano com todo o histórico da nossa conversa."
 
-    if trechos:
-        top = trechos[0]
-        return f"{saud}encontrei isso que pode ajudar: {top.get('conteudo')}"
+    if trecho_txt:
+        return f"{saud}encontrei isso que pode ajudar: {trecho_txt}"
     return f"{saud}entendi. Pode me dar mais detalhes para eu te ajudar melhor?"
 
 
@@ -187,10 +205,15 @@ async def processar_mensagem(body: MensagemIn):
 
     # 2) classificação (LLM real se configurado, senão motor de regras) — a
     # menos que já exista (ou esteja começando agora) um fluxo guiado de
-    # contratação de plano, que é tratado à parte (determinístico, sem LLM,
-    # já que é uma coleta estruturada de dados — nome/nascimento/CPF).
-    intencao_base = nlu.classificar(body.conteudo, categoria_anterior)
-    categoria_provisoria = intencao_base.categoria
+    # contratação de plano, que é tratado à parte (determinístico, sem LLM
+    # nem RAG, já que é uma coleta estruturada de dados — nome/nascimento/CPF).
+    #
+    # categoria_provisoria é a classificação "fresca" (sem levar em conta a
+    # categoria_anterior) — usada tanto para detectar o início do fluxo de
+    # contratação quanto, mais abaixo, para corrigir o texto de resposta
+    # quando o assunto muda sem palavra-chave nova (ver comentário adiante).
+    intencao_fresca = nlu.classificar(body.conteudo)
+    categoria_provisoria = intencao_fresca.categoria
 
     resultado_fluxo = None
     if fluxo_ativo == contratacao.FLUXO:
@@ -202,7 +225,7 @@ async def processar_mensagem(body: MensagemIn):
     llm_resultado = None
     if resultado_fluxo is not None:
         categoria = "venda/contratar_plano"
-        tom = intencao_base.tom_emocional
+        tom = intencao_fresca.tom_emocional
         resposta_texto = resultado_fluxo.resposta
         requer_transbordo = resultado_fluxo.requer_transbordo
         motivo_transbordo = resultado_fluxo.motivo_transbordo
@@ -216,8 +239,11 @@ async def processar_mensagem(body: MensagemIn):
             },
         )
     else:
-        if categoria_provisoria in ("venda/consulta_portfolio", "atendimento/duvida_geral"):
-            trechos = await buscar_conhecimento(CIV_URL, body.conteudo)
+        # Busca de conhecimento (RAG) — consultada sempre, para qualquer
+        # categoria poder citar um trecho real da base em vez de repetir a
+        # mesma frase fixa (a própria busca já retorna vazio quando não há
+        # nada relevante).
+        trechos = await buscar_conhecimento(CIV_URL, body.conteudo)
 
         llm_resultado = llm.classificar_e_responder(body.conteudo, contexto, trechos)
 
@@ -229,11 +255,26 @@ async def processar_mensagem(body: MensagemIn):
             motivo_transbordo = "classificado pelo LLM como necessitando atendimento humano" if requer_transbordo else None
             fonte_classificacao = "llm"
         else:
-            categoria = intencao_base.categoria
-            tom = intencao_base.tom_emocional
-            requer_transbordo = intencao_base.requer_transbordo
-            motivo_transbordo = intencao_base.motivo_transbordo
-            resposta_texto = _resposta_template(categoria, tom, trechos, nome_cliente)
+            intencao = nlu.classificar(body.conteudo, categoria_anterior)
+            categoria = intencao.categoria
+            tom = intencao.tom_emocional
+            requer_transbordo = intencao.requer_transbordo
+            motivo_transbordo = intencao.motivo_transbordo
+            # A "continuidade" (ver nlu.classificar) assume que uma mensagem sem
+            # palavra-chave nova segue o mesmo assunto anterior — ótimo quando o
+            # cliente insiste no mesmo problema, mas erra quando ele muda de
+            # assunto sem usar as palavras que o motor de regras reconhece: a
+            # categoria antiga gruda e o texto de resposta acaba com a pergunta
+            # de fechamento do assunto errado. Quando isso acontece (a
+            # classificação fresca não viu nada de novo, mas a busca de
+            # conhecimento achou algo relevante pro que foi perguntado agora),
+            # usa a categoria fresca (genérica) só na escolha do texto. A
+            # categoria "grudenta" continua valendo pra decisão de transbordo e
+            # pro que fica registrado como intenção da sessão, que é intencional.
+            categoria_para_resposta = categoria
+            if categoria_provisoria == "atendimento/duvida_geral" and categoria != categoria_provisoria and trechos:
+                categoria_para_resposta = categoria_provisoria
+            resposta_texto = _resposta_template(categoria_para_resposta, tom, trechos, nome_cliente)
             fonte_classificacao = "regras"
 
         # Sempre que o transbordo é acionado fora de um fluxo guiado, o Vox

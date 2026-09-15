@@ -44,6 +44,34 @@ def _termos_relevantes(texto: str) -> Set[str]:
     return {_radical(t) for t in tokens if t not in PALAVRAS_VAZIAS_RERANK}
 
 
+PREFIXO_MINIMO = 5
+
+
+def _mesmo_radical_aproximado(a: str, b: str) -> bool:
+    """Compara os 5 primeiros caracteres em vez do token inteiro, para pegar
+    casos que a heurística de plural em _radical não cobre: verbo x
+    substantivo da mesma família ('negociar' x 'negociacao', 'cancelar' x
+    'cancelamento', 'reagendar' x 'reagendamento'). Ainda não é um stemmer
+    de verdade, só um pouco mais tolerante que exigir o token idêntico."""
+    if len(a) < PREFIXO_MINIMO or len(b) < PREFIXO_MINIMO:
+        return False
+    return a[:PREFIXO_MINIMO] == b[:PREFIXO_MINIMO]
+
+
+def _pontuacao_sobreposicao(termos_pergunta: Set[str], termos_doc: Set[str]) -> int:
+    """Termos idênticos valem mais que termos só com prefixo parecido (para
+    não deixar uma combinação aproximada empatar com uma combinação exata
+    no re-ranqueamento)."""
+    exatos = termos_pergunta & termos_doc
+    pontuacao = len(exatos) * 2
+    restantes_pergunta = termos_pergunta - exatos
+    restantes_doc = termos_doc - exatos
+    for tp in restantes_pergunta:
+        if any(_mesmo_radical_aproximado(tp, td) for td in restantes_doc):
+            pontuacao += 1
+    return pontuacao
+
+
 async def buscar_conhecimento(civ_url: str, pergunta: str, limite: int = 2) -> List[Dict[str, Any]]:
     """Recuperação em dois estágios: (1) busca vetorial ampla via pgvector
     na CIV (embedding hash-trick, ver embedding.py) e (2) um re-ranqueamento
@@ -59,7 +87,14 @@ async def buscar_conhecimento(civ_url: str, pergunta: str, limite: int = 2) -> L
         try:
             resp = await client.post(
                 f"{civ_url}/v1/knowledge/search",
-                json={"embedding": vetor, "limite": max(limite * 3, 6)},
+                # A base de conhecimento desta demonstração é pequena (dezenas
+                # de itens, não milhares) — vale mais trazer praticamente todo
+                # mundo como candidato e deixar o re-ranqueamento por termos
+                # decidir, do que confiar só na distância do embedding
+                # simplificado (hash de palavras) para pré-filtrar. Antes o
+                # corte em `limite*3` podia descartar um artigo claramente
+                # relevante antes mesmo do re-ranqueamento ver o conteúdo dele.
+                json={"embedding": vetor, "limite": max(limite * 3, 50)},
             )
             resp.raise_for_status()
             candidatos = resp.json()
@@ -79,7 +114,7 @@ async def buscar_conhecimento(civ_url: str, pergunta: str, limite: int = 2) -> L
     pontuados = []
     for doc in candidatos:
         termos_doc = _termos_relevantes(f"{doc.get('titulo', '')} {doc.get('conteudo', '')}")
-        sobreposicao = len(termos_pergunta & termos_doc)
+        sobreposicao = _pontuacao_sobreposicao(termos_pergunta, termos_doc)
         distancia = doc.get("distancia", 999)
         pontuados.append((sobreposicao, distancia, doc))
 

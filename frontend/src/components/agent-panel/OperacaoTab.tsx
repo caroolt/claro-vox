@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { civ } from "../../api";
-import type { Briefing, SessaoResumo } from "../../types";
+import type { Briefing, ClienteAlerta, SessaoResumo } from "../../types";
 import {
   CANAL_META,
   CANAL_ORDEM,
@@ -38,6 +38,30 @@ export function OperacaoTab({
   const [filaTab, setFilaTab] = useState<"pendentes" | "todos">("pendentes");
   const [idsPorCpf, setIdsPorCpf] = useState<Set<string> | null>(null);
   const [buscandoCpf, setBuscandoCpf] = useState(false);
+  const [alertasPorCliente, setAlertasPorCliente] = useState<Record<string, ClienteAlerta>>({});
+
+  // Alertas de comportamento (hostilidade/urgência/chamados na semana) para
+  // os clientes da fila de transbordo. Refeito só quando o conjunto de
+  // clientes muda, não a cada refresh de 8s do painel.
+  const idsClientesFila = [...new Set(fila.map((b) => b.cliente_id).filter((id): id is string => !!id))].sort();
+  const chaveIds = idsClientesFila.join(",");
+  useEffect(() => {
+    if (!idsClientesFila.length) {
+      setAlertasPorCliente({});
+      return;
+    }
+    let cancelado = false;
+    civ.clientesAlertas(idsClientesFila).then((alertas) => {
+      if (cancelado) return;
+      const porCliente: Record<string, ClienteAlerta> = {};
+      alertas.forEach((a) => (porCliente[a.cliente_id] = a));
+      setAlertasPorCliente(porCliente);
+    });
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveIds]);
 
   const termo = filtros.busca.trim();
   const buscaPorCpf = pareceCpf(termo);
@@ -71,13 +95,26 @@ export function OperacaoTab({
 
   const pendentes = fila.filter((b) => !b.encerrado_em);
   const filaBase = filaTab === "pendentes" ? pendentes : fila;
-  const filaFiltrada = filaBase.filter(
-    (b) =>
-      passaBusca(b.cliente_nome, b.cliente_id) &&
-      (!filtros.estado || b.sessao_estado === filtros.estado) &&
-      (!filtros.canal || b.canal === filtros.canal) &&
-      (!filtros.tom || b.tom_emocional === filtros.tom)
-  );
+  const filaFiltrada = filaBase
+    .filter(
+      (b) =>
+        passaBusca(b.cliente_nome, b.cliente_id) &&
+        (!filtros.estado || b.sessao_estado === filtros.estado) &&
+        (!filtros.canal || b.canal === filtros.canal) &&
+        (!filtros.tom || b.tom_emocional === filtros.tom)
+    )
+    // Clientes com prioridade (muitos chamados na semana) sobem para o topo
+    // da fila, do que mais chamou para o que menos chamou. Os demais mantêm
+    // a ordem original (sort é estável).
+    .sort((a, z) => {
+      const chamadosA = alertasPorCliente[a.cliente_id || ""]?.prioridade
+        ? alertasPorCliente[a.cliente_id || ""].chamados_semana
+        : 0;
+      const chamadosZ = alertasPorCliente[z.cliente_id || ""]?.prioridade
+        ? alertasPorCliente[z.cliente_id || ""].chamados_semana
+        : 0;
+      return chamadosZ - chamadosA;
+    });
 
   const sessoesFiltradas = sessoes.filter(
     (s) =>
@@ -187,6 +224,7 @@ export function OperacaoTab({
                     <TomBadge tom={b.tom_emocional} />
                   </div>
                   {b.protocolo && <p className="mt-0.5 text-[11px] text-gray-400">protocolo {b.protocolo}</p>}
+                  <AlertasCliente alerta={b.cliente_id ? alertasPorCliente[b.cliente_id] : undefined} />
                   <button
                     onClick={() => onAbrirBriefing(b)}
                     className="mt-1 block w-full text-left text-xs text-gray-500 hover:text-gray-700"
@@ -255,6 +293,31 @@ export function OperacaoTab({
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+// Alertas de comportamento do cliente, calculados a partir do histórico
+// (tom das mensagens e transbordos na semana). Só renderiza o que se aplica.
+function AlertasCliente({ alerta }: { alerta: ClienteAlerta | undefined }) {
+  if (!alerta || (!alerta.hostil && !alerta.urgente && !alerta.prioridade)) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1">
+      {alerta.prioridade && (
+        <span className="rounded-full bg-claro-red/10 px-2 py-0.5 text-[11px] font-medium text-claro-red">
+          já é a {alerta.chamados_semana}ª vez essa semana, priorize o atendimento
+        </span>
+      )}
+      {alerta.hostil && (
+        <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
+          tende a ter comportamento hostil
+        </span>
+      )}
+      {alerta.urgente && (
+        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
+          tende a querer as coisas com urgência
+        </span>
+      )}
     </div>
   );
 }
