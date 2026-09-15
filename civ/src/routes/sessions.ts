@@ -16,7 +16,7 @@ sessionsRouter.get("/", requireAuth, h(async (req, res) => {
   const somenteAtivas = req.query.ativas !== "false";
   const where = somenteAtivas ? "WHERE s.estado NOT IN ('ENCERRADA')" : "";
   const result = await pool.query(`
-    SELECT s.id, s.estado, s.criado_em, s.atualizado_em,
+    SELECT s.id, s.estado, s.criado_em, s.atualizado_em, s.protocolo,
            cl.id AS cliente_id, cl.nome AS cliente_nome, cl.tipo_cliente,
            ca.nome AS canal,
            ctx.ultima_intencao, ctx.jornada_status
@@ -48,13 +48,32 @@ sessionsRouter.get("/:id/context", h(async (req, res) => {
   res.json({
     sessao_id: id,
     estado: sessao.estado,
+    protocolo: sessao.protocolo,
     cliente: sessao.cliente_id ? { id: sessao.cliente_id, nome: sessao.cliente_nome, tipo_cliente: sessao.tipo_cliente } : null,
     canal_atual: contextoRes.rows[0]?.canal_atual || sessao.canal_nome,
     canal_anterior: contextoRes.rows[0]?.canal_anterior || null,
     ultima_intencao: contextoRes.rows[0]?.ultima_intencao || null,
     historico_resumido: contextoRes.rows[0]?.historico_resumido || null,
+    fluxo_ativo: contextoRes.rows[0]?.fluxo_ativo || null,
+    fluxo_dados: contextoRes.rows[0]?.fluxo_dados || null,
     atualizado_em: sessao.atualizado_em,
   });
+}));
+
+// POST /v1/sessions/:id/fluxo — o Orquestrador usa isso para guardar em que
+// etapa está um fluxo conversacional guiado (ex.: contratação de plano) e
+// os dados já coletados, ou para encerrar o fluxo (fluxo_ativo: null).
+// Pública — mesma natureza de /context e /intencao, uso interno do Orquestrador.
+sessionsRouter.post("/:id/fluxo", h(async (req, res) => {
+  const { id } = req.params;
+  const { fluxo_ativo, fluxo_dados } = req.body || {};
+  const result = await pool.query(
+    `UPDATE contexto SET fluxo_ativo = $1, fluxo_dados = $2, atualizado_em = now() WHERE sessao_id = $3 RETURNING *`,
+    [fluxo_ativo || null, fluxo_dados ? JSON.stringify(fluxo_dados) : null, id]
+  );
+  if (!result.rows.length) return res.status(404).json({ erro: "contexto da sessão não encontrado" });
+  await cacheSessionContext(id, result.rows[0]);
+  res.json({ ok: true });
 }));
 
 // GET /v1/sessions/:id/messages — histórico de mensagens de uma sessão

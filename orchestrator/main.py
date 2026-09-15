@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import contratacao
 import llm
 import nlu
 from rag import buscar_conhecimento
@@ -175,6 +176,8 @@ async def processar_mensagem(body: MensagemIn):
     nome_cliente = (contexto.get("cliente") or {}).get("nome")
     ultima_intencao = contexto.get("ultima_intencao") or {}
     categoria_anterior = ultima_intencao.get("categoria") if isinstance(ultima_intencao, dict) else None
+    fluxo_ativo = contexto.get("fluxo_ativo")
+    fluxo_dados = contexto.get("fluxo_dados") or {}
 
     # 1) registra a mensagem do cliente
     msg_cliente = await _civ_post(
@@ -182,38 +185,67 @@ async def processar_mensagem(body: MensagemIn):
         {"remetente": "cliente", "canal": body.canal, "conteudo": body.conteudo},
     )
 
-    # 2) classificação (LLM real se configurado, senão motor de regras)
+    # 2) classificação (LLM real se configurado, senão motor de regras) — a
+    # menos que já exista (ou esteja começando agora) um fluxo guiado de
+    # contratação de plano, que é tratado à parte (determinístico, sem LLM,
+    # já que é uma coleta estruturada de dados — nome/nascimento/CPF).
+    intencao_base = nlu.classificar(body.conteudo, categoria_anterior)
+    categoria_provisoria = intencao_base.categoria
+
+    resultado_fluxo = None
+    if fluxo_ativo == contratacao.FLUXO:
+        resultado_fluxo = await contratacao.continuar(CIV_URL, sessao_id, fluxo_dados, body.conteudo)
+    elif categoria_provisoria == "venda/contratar_plano":
+        resultado_fluxo = contratacao.iniciar(nome_cliente)
+
     trechos = []
-    categoria_provisoria = nlu.classificar(body.conteudo).categoria
-    if categoria_provisoria in ("venda/consulta_portfolio", "atendimento/duvida_geral"):
-        trechos = await buscar_conhecimento(CIV_URL, body.conteudo)
-
-    llm_resultado = llm.classificar_e_responder(body.conteudo, contexto, trechos)
-
-    if llm_resultado:
-        categoria = llm_resultado.get("categoria", categoria_provisoria)
-        tom = llm_resultado.get("tom_emocional", "neutro")
-        resposta_texto = llm_resultado.get("resposta") or _resposta_template(categoria, tom, trechos, nome_cliente)
-        requer_transbordo = bool(llm_resultado.get("requer_transbordo", False))
-        motivo_transbordo = "classificado pelo LLM como necessitando atendimento humano" if requer_transbordo else None
-        fonte_classificacao = "llm"
-    else:
-        intencao = nlu.classificar(body.conteudo, categoria_anterior)
-        categoria = intencao.categoria
-        tom = intencao.tom_emocional
-        requer_transbordo = intencao.requer_transbordo
-        motivo_transbordo = intencao.motivo_transbordo
-        resposta_texto = _resposta_template(categoria, tom, trechos, nome_cliente)
-        fonte_classificacao = "regras"
-
-    # Sempre que o transbordo é acionado, o Vox avisa o cliente antes de
-    # transferir — mensagem fixa, para deixar claro que a partir dali um
-    # atendente humano assume a conversa (RF007-009).
-    if requer_transbordo:
-        resposta_texto = (
-            "Não consigo te ajudar com isso. Estou te transferindo para um atendente! "
-            "Antes disso, de 0 a 10, o quanto você recomendaria o atendimento do assistente virtual?"
+    llm_resultado = None
+    if resultado_fluxo is not None:
+        categoria = "venda/contratar_plano"
+        tom = intencao_base.tom_emocional
+        resposta_texto = resultado_fluxo.resposta
+        requer_transbordo = resultado_fluxo.requer_transbordo
+        motivo_transbordo = resultado_fluxo.motivo_transbordo
+        fonte_classificacao = "fluxo_contratacao"
+        # Persiste em que etapa o fluxo está (ou encerra, se concluído/abortado).
+        await _civ_post(
+            f"/v1/sessions/{sessao_id}/fluxo",
+            {
+                "fluxo_ativo": contratacao.FLUXO if resultado_fluxo.fluxo_dados else None,
+                "fluxo_dados": resultado_fluxo.fluxo_dados,
+            },
         )
+    else:
+        if categoria_provisoria in ("venda/consulta_portfolio", "atendimento/duvida_geral"):
+            trechos = await buscar_conhecimento(CIV_URL, body.conteudo)
+
+        llm_resultado = llm.classificar_e_responder(body.conteudo, contexto, trechos)
+
+        if llm_resultado:
+            categoria = llm_resultado.get("categoria", categoria_provisoria)
+            tom = llm_resultado.get("tom_emocional", "neutro")
+            resposta_texto = llm_resultado.get("resposta") or _resposta_template(categoria, tom, trechos, nome_cliente)
+            requer_transbordo = bool(llm_resultado.get("requer_transbordo", False))
+            motivo_transbordo = "classificado pelo LLM como necessitando atendimento humano" if requer_transbordo else None
+            fonte_classificacao = "llm"
+        else:
+            categoria = intencao_base.categoria
+            tom = intencao_base.tom_emocional
+            requer_transbordo = intencao_base.requer_transbordo
+            motivo_transbordo = intencao_base.motivo_transbordo
+            resposta_texto = _resposta_template(categoria, tom, trechos, nome_cliente)
+            fonte_classificacao = "regras"
+
+        # Sempre que o transbordo é acionado fora de um fluxo guiado, o Vox
+        # avisa o cliente antes de transferir — mensagem fixa, para deixar
+        # claro que a partir dali um atendente humano assume a conversa
+        # (RF007-009). Dentro do fluxo de contratação a mensagem já é
+        # específica (explica a divergência de dados), então não é sobrescrita.
+        if requer_transbordo:
+            resposta_texto = (
+                "Não consigo te ajudar com isso. Estou te transferindo para um atendente! "
+                "Antes disso, de 0 a 10, o quanto você recomendaria o atendimento do assistente virtual?"
+            )
 
     # 3) registra a resposta do Vox
     msg_vox = await _civ_post(

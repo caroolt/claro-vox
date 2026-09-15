@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS cliente (
   cpf_hash       TEXT UNIQUE,          -- HMAC-SHA-256(CPF) — nunca guardamos o CPF em texto puro (Seção 4.6)
   telefone       TEXT,                 -- usado para base de prospecção (RF011) quando não há CPF ainda
   nome           TEXT NOT NULL,
+  data_nascimento DATE,                -- confirmada/coletada no fluxo de contratação de plano
   tipo_cliente   TEXT NOT NULL CHECK (tipo_cliente IN ('ativo','prospeccao')),
   consentimento_ts TIMESTAMPTZ,
   consentimento_versao TEXT,
@@ -36,6 +37,11 @@ CREATE TABLE IF NOT EXISTS sessao (
   estado           TEXT NOT NULL DEFAULT 'INEXISTENTE'
                      CHECK (estado IN ('INEXISTENTE','COLD_START','ATIVA','TRANSBORDO_PENDENTE','EM_ATENDIMENTO_HUMANO','ENCERRADA')),
   cold_start_etapa TEXT,               -- controla em qual pergunta do Cold Start a sessão está
+  -- Protocolo de atendimento — identifica esta sessão/chamada pro cliente,
+  -- independente do canal (uma nova sessão por troca de canal via RF004
+  -- também ganha o seu próprio protocolo). Gerado assim que o Cold Start
+  -- termina e a sessão vira ATIVA.
+  protocolo        TEXT UNIQUE,
   criado_em        TIMESTAMPTZ NOT NULL DEFAULT now(),
   atualizado_em    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -48,6 +54,11 @@ CREATE TABLE IF NOT EXISTS contexto (
   jornada_status     TEXT NOT NULL DEFAULT 'EM_ANDAMENTO',
   canal_atual        TEXT,
   canal_anterior     TEXT,
+  -- Fluxo conversacional guiado em andamento (ex.: contratação de plano) —
+  -- guarda em qual etapa está e os dados já coletados, pra sobreviver entre
+  -- mensagens sem precisar de estado em memória no Orquestrador.
+  fluxo_ativo        TEXT,
+  fluxo_dados        JSONB,
   atualizado_em      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -137,6 +148,19 @@ CREATE TABLE IF NOT EXISTS usuario (
   mfa_ativado  BOOLEAN NOT NULL DEFAULT false,
   ativo        BOOLEAN NOT NULL DEFAULT true,
   criado_em    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Contratação simulada de plano (pré-pago/controle/pós), disparada pelo
+-- fluxo guiado do Vox dentro do chat (não é uma tela separada). Reaproveita
+-- o protocolo da sessão como identificador da solicitação.
+CREATE TABLE IF NOT EXISTS contrato (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cliente_id       UUID NOT NULL REFERENCES cliente(id) ON DELETE CASCADE,
+  sessao_id        UUID NOT NULL REFERENCES sessao(id) ON DELETE CASCADE,
+  tipo_plano       TEXT NOT NULL CHECK (tipo_plano IN ('pre-pago','controle','pos-pago')),
+  protocolo        TEXT NOT NULL,
+  status           TEXT NOT NULL DEFAULT 'confirmado' CHECK (status IN ('confirmado','cancelado')),
+  criado_em        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessao_estado ON sessao(estado);

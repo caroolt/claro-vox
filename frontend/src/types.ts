@@ -48,6 +48,7 @@ export interface SessaoResumo {
   estado: string;
   criado_em: string;
   atualizado_em: string;
+  protocolo: string | null;
   cliente_id: string | null;
   cliente_nome: string | null;
   tipo_cliente: string | null;
@@ -66,6 +67,7 @@ export interface Briefing {
   sugestao_resolucao: string;
   gerado_em: string;
   sessao_estado: string;
+  protocolo: string | null;
   cliente_id: string | null;
   cliente_nome: string | null;
   tipo_cliente: string | null;
@@ -127,6 +129,7 @@ export interface ClienteSessao {
   estado: string;
   criado_em: string;
   atualizado_em: string;
+  protocolo: string | null;
   canal: string | null;
   ultima_intencao: any;
   jornada_status: string | null;

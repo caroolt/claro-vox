@@ -21,6 +21,7 @@ export function BriefingModal({
         <h3 className="mb-1 font-semibold text-gray-800">Briefing de transbordo</h3>
         <p className="mb-3 text-sm text-gray-500">{briefing.cliente_nome}</p>
         <dl className="space-y-2 text-sm">
+          {briefing.protocolo && <Row label="Protocolo" value={briefing.protocolo} />}
           <Row label="Motivo" value={briefing.motivo_transbordo} />
           <Row label="Tom emocional" value={TOM_META[briefing.tom_emocional]?.label || briefing.tom_emocional} />
           <Row label="Canais utilizados" value={briefing.canais_utilizados} />

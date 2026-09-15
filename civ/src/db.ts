@@ -38,6 +38,24 @@ export async function ensureSchema() {
       criado_em    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // Protocolo de atendimento (identifica a sessão/chamada pro cliente,
+  // independente de canal) e o fluxo conversacional guiado em andamento
+  // (ex.: contratação de plano).
+  await pool.query(`ALTER TABLE sessao ADD COLUMN IF NOT EXISTS protocolo TEXT UNIQUE`);
+  await pool.query(`ALTER TABLE contexto ADD COLUMN IF NOT EXISTS fluxo_ativo TEXT`);
+  await pool.query(`ALTER TABLE contexto ADD COLUMN IF NOT EXISTS fluxo_dados JSONB`);
+  await pool.query(`ALTER TABLE cliente ADD COLUMN IF NOT EXISTS data_nascimento DATE`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS contrato (
+      id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      cliente_id       UUID NOT NULL REFERENCES cliente(id) ON DELETE CASCADE,
+      sessao_id        UUID NOT NULL REFERENCES sessao(id) ON DELETE CASCADE,
+      tipo_plano       TEXT NOT NULL CHECK (tipo_plano IN ('pre-pago','controle','pos-pago')),
+      protocolo        TEXT NOT NULL,
+      status           TEXT NOT NULL DEFAULT 'confirmado' CHECK (status IN ('confirmado','cancelado')),
+      criado_em        TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
 }
 
 export async function audit(ator: string, acao: string, recursoId?: string) {
