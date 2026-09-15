@@ -71,7 +71,7 @@ export function LoginScreen({ onEntrar }: { onEntrar: (token: string, usuario: U
           aria-hidden
         />
 
-        <img src={logoClaroVox} alt="Claro Vox" className="relative h-6 w-auto" />
+        <img src={logoClaroVox} alt="Claro Vox" className="relative h-6 w-auto self-start" />
 
         <div className="relative">
           <h1 className="mb-3 text-2xl font-bold leading-snug">
@@ -101,7 +101,7 @@ export function LoginScreen({ onEntrar }: { onEntrar: (token: string, usuario: U
       {/* Formulário */}
       <div className="flex flex-1 items-center justify-center p-6">
         <div className="w-full max-w-sm">
-          <div className="mb-8 flex justify-center lg:hidden">
+          <div className="mb-8 flex items-center justify-center lg:hidden">
             <img src={logoClaroVox} alt="Claro Vox" className="h-7 w-auto" />
           </div>
 

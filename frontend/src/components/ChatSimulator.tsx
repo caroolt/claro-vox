@@ -248,7 +248,7 @@ export function ChatSimulator() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-gray-50">
         {bubbles.length === 0 && fase === "inicio" && (
           <div className="text-center text-gray-400 mt-16">
-            <span className="mb-3 inline-flex rounded-xl bg-claro-black px-4 py-2.5">
+            <span className="mb-3 inline-flex items-center rounded-xl bg-claro-black px-4 py-2.5">
               <img src={logoClaroVox} alt="Claro Vox" className="h-8 w-auto" />
             </span>
             <p className="text-lg mb-2">Simulador de atendimento</p>
