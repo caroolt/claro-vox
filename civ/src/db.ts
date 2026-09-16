@@ -56,6 +56,44 @@ export async function ensureSchema() {
       criado_em        TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+
+  // Camada de detecção de fraude cross-canal — sinais cross-identidade na
+  // sessão (dispositivo/IP, já que CPF sozinho não liga clientes distintos),
+  // parâmetros editáveis pelo admin e os alertas gerados pelo motor de regras.
+  await pool.query(`ALTER TABLE sessao ADD COLUMN IF NOT EXISTS dispositivo_id TEXT`);
+  await pool.query(`ALTER TABLE sessao ADD COLUMN IF NOT EXISTS ip_origem TEXT`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS configuracao (
+      chave          TEXT PRIMARY KEY,
+      valor          NUMERIC NOT NULL,
+      descricao      TEXT,
+      atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      atualizado_por UUID REFERENCES usuario(id)
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS alerta_fraude (
+      id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      regra          TEXT NOT NULL CHECK (regra IN ('A_volume_cpf','B_dispositivo_ip','C_estilo_escrita')),
+      clientes_ids   UUID[] NOT NULL,
+      evidencia      JSONB NOT NULL,
+      explicacao     TEXT NOT NULL,
+      confianca      TEXT NOT NULL CHECK (confianca IN ('alta','media','baixa')),
+      status         TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto','revisado','descartado')),
+      criado_em      TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_sessao_dispositivo ON sessao(dispositivo_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_sessao_ip ON sessao(ip_origem)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerta_fraude_status ON alerta_fraude(status)`);
+
+  await pool.query(`
+    INSERT INTO configuracao (chave, valor, descricao) VALUES
+      ('meta_transbordo_pct', 25, 'Meta (%) da taxa de transbordo — acima disso a Visão geral destaca o indicador'),
+      ('limiar_fraude_pre_pago', 3, 'Nº de contratos pré-pagos confirmados por cliente acima do qual um novo pedido gera alerta (Regra A)'),
+      ('limiar_similaridade_estilo', 0.85, 'Similaridade mínima (0-1) do vetor estilométrico entre clientes de CPFs diferentes para gerar alerta (Regra C)')
+    ON CONFLICT (chave) DO NOTHING
+  `);
 }
 
 export async function audit(ator: string, acao: string, recursoId?: string) {

@@ -1,4 +1,14 @@
-import { BookOpen, Headset, LayoutDashboard, LogOut, UserCog, Users, type LucideIcon } from "lucide-react";
+import {
+  BookOpen,
+  Headset,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  ShieldAlert,
+  UserCog,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import logoClaroVox from "../../assets/claro-vox-logo.png";
 import type { Usuario } from "../../types";
 import type { Aba } from "./AgentPanel";
@@ -9,6 +19,8 @@ const ICONE_POR_ABA: Record<Aba, LucideIcon> = {
   clientes: Users,
   kb: BookOpen,
   atendentes: UserCog,
+  fraude: ShieldAlert,
+  configuracoes: Settings,
 };
 
 export function Sidebar({
