@@ -122,8 +122,13 @@ PALAVRAS_SATISFACAO = [
 
 
 def _gritando(texto_original: str) -> bool:
-    """Detecta 'grito' — mensagem digitada em maiúsculas, sinal comum de
-    raiva no chat que se perde ao normalizar o texto para minúsculas."""
+    """Detecta 'grito' — mensagem digitada em maiúsculas. Sozinho, isso é só
+    ênfase (às vezes nem isso — cliente com Caps Lock ligado sem querer),
+    não xingamento nem ofensa; tratar como hostilidade classificava até um
+    pedido comercial neutro ("MAIS INTERNET") como "comportamento hostil
+    (xingamento/ofensa)" no briefing do atendente. Conta como frustração,
+    não hostilidade — hostilidade exige palavra hostil de verdade (ver
+    PALAVRAS_HOSTIL)."""
     letras = [c for c in texto_original if c.isalpha()]
     if len(letras) < 5:
         return False
@@ -134,12 +139,13 @@ def _gritando(texto_original: str) -> bool:
 def detectar_tom_emocional(texto_norm: str, texto_original: str = "") -> Optional[str]:
     # Hostilidade é checada primeiro — é o sinal mais forte (xingamento,
     # ofensa) e não deveria ser mascarado por uma palavra de frustração que
-    # também apareça na mesma mensagem.
+    # também apareça na mesma mensagem. Só entra aqui com xingamento/ofensa
+    # de verdade (PALAVRAS_HOSTIL) — maiúsculas sozinhas não bastam.
     if any(p in texto_norm for p in PALAVRAS_HOSTIL):
         return "hostil"
-    if texto_original and _gritando(texto_original):
-        return "hostil"
     if any(p in texto_norm for p in PALAVRAS_FRUSTRACAO):
+        return "frustracao"
+    if texto_original and _gritando(texto_original):
         return "frustracao"
     if any(p in texto_norm for p in PALAVRAS_URGENCIA):
         return "urgencia"
