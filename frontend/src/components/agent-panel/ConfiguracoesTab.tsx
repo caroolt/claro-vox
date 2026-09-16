@@ -9,6 +9,7 @@ const ROTULOS: Record<string, string> = {
   meta_transbordo_pct: "Meta de transbordo (%)",
   limiar_fraude_pre_pago: "Limite de linhas pré-pagas por CPF (Regra A)",
   limiar_similaridade_estilo: "Similaridade mínima de estilo de escrita (Regra C)",
+  timeout_atendente_min: "Timeout de inatividade em atendimento humano (min)",
 };
 
 // Aba exclusiva do admin: parâmetros operacionais que hoje seriam

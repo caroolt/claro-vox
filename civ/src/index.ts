@@ -15,6 +15,7 @@ import { contratosRouter } from "./routes/contratos";
 import { auditoriaRouter } from "./routes/auditoria";
 import { configuracoesRouter } from "./routes/configuracoes";
 import { fraudeRouter } from "./routes/fraude";
+import { verificarTimeoutsAtendente } from "./jobs/timeoutAtendente";
 import { initWs } from "./ws";
 import { pool, ensureSchema } from "./db";
 
@@ -63,4 +64,7 @@ server.listen(PORT, async () => {
   } catch (e) {
     console.error("[civ] falha ao garantir schema incremental:", (e as Error).message);
   }
+  // Checa a cada minuto — granularidade suficiente pra um timeout medido em
+  // minutos, sem gerar carga desnecessária no banco.
+  setInterval(verificarTimeoutsAtendente, 60_000);
 });
