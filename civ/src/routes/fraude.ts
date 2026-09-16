@@ -47,7 +47,7 @@ async function detectarRegraA(limiar: number): Promise<AlertaGerado[]> {
     regra: "A_volume_cpf" as const,
     clientes_ids: [row.cliente_id],
     evidencia: {
-      cliente_nome: row.nome,
+      clientes: [{ id: row.cliente_id, nome: row.nome }],
       total_linhas_pre_pago: Number(row.total),
       protocolos: row.protocolos,
       limiar,
@@ -82,29 +82,35 @@ async function detectarRegraB(): Promise<AlertaGerado[]> {
   const alertas: AlertaGerado[] = [];
   for (const row of dispositivos.rows) {
     const ids = [...row.clientes].sort();
-    const nomesClientes = ids.map((id) => nomes.get(id) || id);
+    const clientes = ids.map((id) => ({ id, nome: nomes.get(id) || id }));
     alertas.push({
       regra: "B_dispositivo_ip",
       clientes_ids: ids,
-      evidencia: { tipo: "dispositivo_id", valor: row.chave, clientes: nomesClientes },
-      explicacao: `O mesmo dispositivo foi usado por ${ids.length} CPFs diferentes: ${nomesClientes.join(", ")}.`,
+      evidencia: { tipo: "dispositivo_id", valor: row.chave, clientes },
+      explicacao: `O mesmo dispositivo foi usado por ${ids.length} CPFs diferentes: ${clientes.map((c) => c.nome).join(", ")}.`,
       confianca: "alta",
     });
   }
   for (const row of ips.rows) {
     const ids = [...row.clientes].sort();
-    const nomesClientes = ids.map((id) => nomes.get(id) || id);
+    const clientes = ids.map((id) => ({ id, nome: nomes.get(id) || id }));
     alertas.push({
       regra: "B_dispositivo_ip",
       clientes_ids: ids,
-      evidencia: { tipo: "ip_origem", valor: row.chave, clientes: nomesClientes },
-      explicacao: `A mesma origem de rede (IP) foi usada por ${ids.length} CPFs diferentes: ${nomesClientes.join(", ")}.`,
+      evidencia: { tipo: "ip_origem", valor: row.chave, clientes },
+      explicacao: `A mesma origem de rede (IP) foi usada por ${ids.length} CPFs diferentes: ${clientes.map((c) => c.nome).join(", ")}.`,
       confianca: "alta",
     });
   }
   return alertas;
 }
 
+// LIMITAÇÃO CONHECIDA: compara cada cliente com todos os outros (par a
+// par), custo O(n²) no número de clientes com mensagens suficientes. Viável
+// para a base de demonstração, mas não escala para uma base de produção
+// (milhões de clientes) — precisaria de uma etapa de bucketing/clustering
+// antes (só comparar dentro de grupos com características parecidas) ou
+// rodar como job em lote, não sob demanda a cada GET.
 async function detectarRegraC(limiar: number): Promise<AlertaGerado[]> {
   const r = await pool.query(
     `
@@ -131,18 +137,20 @@ async function detectarRegraC(limiar: number): Promise<AlertaGerado[]> {
       const similaridade = similaridadeGeral(a.perfil, b.perfil);
       if (similaridade < limiar) continue;
       const porFeature = similaridadePorFeature(a.perfil, b.perfil);
+      const nomePorId = new Map([[a.clienteId, a.nome], [b.clienteId, b.nome]]);
       const ids = [a.clienteId, b.clienteId].sort();
+      const clientes = ids.map((id) => ({ id, nome: nomePorId.get(id)! }));
       alertas.push({
         regra: "C_estilo_escrita",
         clientes_ids: ids,
         evidencia: {
-          clientes: [a.nome, b.nome],
+          clientes,
           similaridade_geral: Number(similaridade.toFixed(2)),
           por_feature: Object.fromEntries(
             Object.entries(porFeature).map(([k, v]) => [k, Number((v as number).toFixed(2))])
           ),
         },
-        explicacao: `${a.nome} e ${b.nome} têm padrão de escrita ${Math.round(similaridade * 100)}% semelhante, apesar de CPFs diferentes — indício fraco, requer investigação manual.`,
+        explicacao: `${a.nome} e ${b.nome} têm padrão de escrita ${Math.round(similaridade * 100)}% semelhante, apesar de CPFs diferentes. Indício fraco, requer investigação manual.`,
         confianca: "baixa",
       });
     }
@@ -216,8 +224,28 @@ fraudeRouter.put("/alertas/:id", h(async (req, res) => {
   res.json(result.rows[0]);
 }));
 
+interface NoGrafo {
+  id: string;
+  nome: string;
+  tipo: "cliente" | "linha";
+  bloqueado?: boolean;
+}
+
+interface ArestaGrafo {
+  id: string;
+  origem: string;
+  destino: string;
+  alerta_id: string;
+  regra: string;
+  confianca: string;
+  explicacao: string;
+}
+
 // GET /v1/fraude/grafo — nós/arestas só dos clientes envolvidos em alertas
 // em aberto (nunca a base inteira) para o grafo do painel (react-flow).
+// A Regra A também vira arestas: cada linha pré-paga do cliente aparece
+// como um nó satélite conectado a ele, pra mostrar o leque de contas de
+// verdade em vez de só marcar o cliente com uma borda.
 fraudeRouter.get("/grafo", h(async (_req, res) => {
   const alertasRes = await pool.query(
     `SELECT id, regra, clientes_ids, evidencia, explicacao, confianca FROM alerta_fraude WHERE status = 'aberto'`
@@ -227,44 +255,60 @@ fraudeRouter.get("/grafo", h(async (_req, res) => {
   alertasRes.rows.forEach((a) => a.clientes_ids.forEach((id: string) => clienteIds.add(id)));
 
   const nomes = new Map<string, string>();
+  const bloqueados = new Set<string>();
   if (clienteIds.size) {
-    const nomesRes = await pool.query(`SELECT id, nome FROM cliente WHERE id = ANY($1::uuid[])`, [[...clienteIds]]);
-    nomesRes.rows.forEach((r) => nomes.set(r.id, r.nome));
+    const nomesRes = await pool.query(`SELECT id, nome, bloqueado FROM cliente WHERE id = ANY($1::uuid[])`, [
+      [...clienteIds],
+    ]);
+    nomesRes.rows.forEach((r) => {
+      nomes.set(r.id, r.nome);
+      if (r.bloqueado) bloqueados.add(r.id);
+    });
   }
 
-  const nos = [...clienteIds].map((id) => ({ id, nome: nomes.get(id) || "cliente removido" }));
+  const nos: NoGrafo[] = [...clienteIds].map((id) => ({
+    id,
+    nome: nomes.get(id) || "cliente removido",
+    tipo: "cliente",
+    bloqueado: bloqueados.has(id),
+  }));
+  const arestas: ArestaGrafo[] = [];
 
-  // A Regra A é interna a um único cliente (não liga identidades
-  // diferentes) — vira destaque no próprio nó, não uma aresta.
-  const alertasVolume = alertasRes.rows.filter((a) => a.regra === "A_volume_cpf");
-  const arestas = alertasRes.rows
-    .filter((a) => a.regra !== "A_volume_cpf")
-    .flatMap((a) => {
-      const ids: string[] = a.clientes_ids;
-      const pares: {
-        id: string;
-        origem: string;
-        destino: string;
-        alerta_id: string;
-        regra: string;
-        confianca: string;
-        explicacao: string;
-      }[] = [];
-      for (let i = 0; i < ids.length; i++) {
-        for (let j = i + 1; j < ids.length; j++) {
-          pares.push({
-            id: `${a.id}-${i}-${j}`,
-            origem: ids[i],
-            destino: ids[j],
-            alerta_id: a.id,
-            regra: a.regra,
-            confianca: a.confianca,
-            explicacao: a.explicacao,
-          });
-        }
+  for (const a of alertasRes.rows) {
+    if (a.regra === "A_volume_cpf") {
+      const clienteId: string = a.clientes_ids[0];
+      const protocolos: string[] = a.evidencia?.protocolos || [];
+      protocolos.forEach((protocolo, i) => {
+        const linhaId = `${a.id}-linha-${i}`;
+        nos.push({ id: linhaId, nome: `Linha ${protocolo}`, tipo: "linha" });
+        arestas.push({
+          id: `${a.id}-aresta-${i}`,
+          origem: clienteId,
+          destino: linhaId,
+          alerta_id: a.id,
+          regra: a.regra,
+          confianca: a.confianca,
+          explicacao: a.explicacao,
+        });
+      });
+      continue;
+    }
+
+    const ids: string[] = a.clientes_ids;
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        arestas.push({
+          id: `${a.id}-${i}-${j}`,
+          origem: ids[i],
+          destino: ids[j],
+          alerta_id: a.id,
+          regra: a.regra,
+          confianca: a.confianca,
+          explicacao: a.explicacao,
+        });
       }
-      return pares;
-    });
+    }
+  }
 
-  res.json({ nos, arestas, alertas_volume: alertasVolume });
+  res.json({ nos, arestas });
 }));

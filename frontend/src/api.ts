@@ -115,6 +115,13 @@ export const civ = {
   },
   clienteDetalhe: (id: string) => req<ClienteDetalhe>(`${CIV_URL}/v1/clientes/${id}`),
   excluirCliente: (id: string) => req<any>(`${CIV_URL}/v1/clientes/${id}`, { method: "DELETE" }),
+  // Ação de baixo atrito a partir de um alerta de fraude: bloqueia (ou
+  // desbloqueia) o cliente sem apagar nada do histórico.
+  bloquearCliente: (id: string, bloqueado: boolean, motivo?: string) =>
+    req<{ id: string; nome: string; bloqueado: boolean }>(`${CIV_URL}/v1/clientes/${id}/bloqueio`, {
+      method: "PUT",
+      body: JSON.stringify({ bloqueado, motivo }),
+    }),
   // Registra a nota de NPS enviada pelo cliente no simulador — alvo "ia"
   // (junto do transbordo) ou "atendente" (ao encerrar o atendimento humano).
   nps: (payload: {

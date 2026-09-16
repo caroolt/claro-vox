@@ -2,7 +2,7 @@ import { Router } from "express";
 import { pool, audit } from "../db";
 import { hashCpf } from "../crypto";
 import { h } from "../asyncHandler";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRole } from "../middleware/auth";
 
 export const clientesRouter = Router();
 
@@ -217,6 +217,9 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
       data_cadastro: cliente.data_cadastro,
       consentimento_ts: cliente.consentimento_ts,
       consentimento_versao: cliente.consentimento_versao,
+      bloqueado: cliente.bloqueado,
+      bloqueado_em: cliente.bloqueado_em,
+      bloqueado_motivo: cliente.bloqueado_motivo,
     },
     acessibilidade:
       acess.rows[0] || { modalidade_libras: false, leitor_de_tela: false, linguagem_simplificada: false },
@@ -231,6 +234,30 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
     sessoes: sessoesRes.rows,
     briefings: briefingsRes.rows,
   });
+}));
+
+// PUT /v1/clientes/:id/bloqueio — ação de baixo atrito a partir de um
+// alerta de fraude (aba Fraude): bloqueia (ou desbloqueia) o cliente sem
+// apagar nada do histórico, ao contrário da exclusão LGPD abaixo. Um
+// cliente bloqueado não consegue confirmar novas contratações (ver
+// checagem em POST /v1/contratos).
+clientesRouter.put("/:id/bloqueio", requireAuth, requireRole("admin"), h(async (req, res) => {
+  const { id } = req.params;
+  const { bloqueado, motivo } = req.body || {};
+  if (typeof bloqueado !== "boolean") return res.status(400).json({ erro: "bloqueado deve ser true ou false" });
+
+  const result = await pool.query(
+    `UPDATE cliente
+     SET bloqueado = $1, bloqueado_em = CASE WHEN $1 THEN now() ELSE NULL END,
+         bloqueado_motivo = CASE WHEN $1 THEN $2 ELSE NULL END
+     WHERE id = $3
+     RETURNING id, nome, bloqueado, bloqueado_em, bloqueado_motivo`,
+    [bloqueado, motivo || null, id]
+  );
+  if (!result.rows.length) return res.status(404).json({ erro: "cliente não encontrado" });
+
+  await audit(req.usuario!.email, bloqueado ? "clientes.bloqueado" : "clientes.desbloqueado", id);
+  res.json(result.rows[0]);
 }));
 
 // DELETE /v1/clientes/:id — direito de exclusão da LGPD (art. 18), Seção 4.7

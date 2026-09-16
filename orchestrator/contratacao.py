@@ -151,11 +151,30 @@ async def _finalizar(civ_url: str, sessao_id: str, dados: Dict[str, Any]) -> Res
                 requer_transbordo=True,
                 motivo_transbordo="divergência de dados na confirmação de identidade (contratação de plano)",
             )
+        if motivo == "possivel_fraude_volume":
+            # Não revela ao cliente (possível fraudador) o motivo real da
+            # recusa — só escala pra um humano decidir com o alerta já
+            # visível na fila (ver civ/src/routes/contratos.ts).
+            return ResultadoEtapa(
+                "Não consigo confirmar essa contratação agora. Vou te transferir para um atendente revisar seu "
+                "cadastro antes de prosseguir.",
+                None,
+                requer_transbordo=True,
+                motivo_transbordo="possível fraude: limite de linhas pré-pagas no mesmo CPF (Regra A, contratação de plano)",
+            )
         return ResultadoEtapa(
             "Esse CPF já está associado a outro cadastro. Vou te transferir para um atendente resolver isso.",
             None,
             requer_transbordo=True,
             motivo_transbordo="CPF já pertence a outro cadastro (contratação de plano)",
+        )
+
+    if resp.status_code == 403:
+        return ResultadoEtapa(
+            "Não consigo prosseguir com essa contratação agora. Vou te transferir para um atendente resolver isso.",
+            None,
+            requer_transbordo=True,
+            motivo_transbordo="cadastro bloqueado por suspeita de fraude (contratação de plano)",
         )
 
     return ResultadoEtapa(

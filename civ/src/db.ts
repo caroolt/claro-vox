@@ -87,9 +87,15 @@ export async function ensureSchema() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_sessao_ip ON sessao(ip_origem)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerta_fraude_status ON alerta_fraude(status)`);
 
+  // Bloqueio manual do cliente a partir de um alerta de fraude (aba Fraude)
+  // — ação de baixo atrito ao lado de "marcar como revisado/descartado".
+  await pool.query(`ALTER TABLE cliente ADD COLUMN IF NOT EXISTS bloqueado BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE cliente ADD COLUMN IF NOT EXISTS bloqueado_em TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE cliente ADD COLUMN IF NOT EXISTS bloqueado_motivo TEXT`);
+
   await pool.query(`
     INSERT INTO configuracao (chave, valor, descricao) VALUES
-      ('meta_transbordo_pct', 25, 'Meta (%) da taxa de transbordo — acima disso a Visão geral destaca o indicador'),
+      ('meta_transbordo_pct', 25, 'Meta (%) da taxa de transbordo. Acima disso, a Visão geral destaca o indicador'),
       ('limiar_fraude_pre_pago', 3, 'Nº de contratos pré-pagos confirmados por cliente acima do qual um novo pedido gera alerta (Regra A)'),
       ('limiar_similaridade_estilo', 0.85, 'Similaridade mínima (0-1) do vetor estilométrico entre clientes de CPFs diferentes para gerar alerta (Regra C)')
     ON CONFLICT (chave) DO NOTHING
