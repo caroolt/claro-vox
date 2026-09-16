@@ -6,31 +6,51 @@ import { requireAuth } from "../middleware/auth";
 
 export const handoffRouter = Router();
 
-// POST /v1/handoff — acionado pelo Orquestrador quando não resolve sozinho
-// (RF007, RF009) — pública, chamada internamente, sem usuário logado.
-handoffRouter.post("/", h(async (req, res) => {
-  const { sessao_id, motivo, tom_emocional, resumo_jornada, sugestao_resolucao } = req.body || {};
-  if (!sessao_id || !motivo) return res.status(400).json({ erro: "sessao_id e motivo são obrigatórios" });
-
+// Cria o briefing + registro de handoff e marca a sessão como
+// TRANSBORDO_PENDENTE — extraído da rota abaixo pra ser reaproveitado por
+// qualquer lugar do CIV que precise acionar transbordo diretamente (sem
+// passar pelo Orquestrador), como a divergência de identidade no
+// reconhecimento do Cold Start (ver coldstart.ts).
+export async function acionarHandoff(
+  sessaoId: string,
+  motivo: string,
+  tomEmocional: string | null,
+  resumoJornada: string,
+  sugestaoResolucao: string,
+  ator = "civ"
+) {
   const canaisRes = await pool.query(
     `SELECT DISTINCT ca.nome FROM mensagem m JOIN canal ca ON ca.id = m.canal_id WHERE m.sessao_id = $1`,
-    [sessao_id]
+    [sessaoId]
   );
   const canaisUtilizados = canaisRes.rows.map((r) => r.nome).join(", ");
 
   const briefingRes = await pool.query(
     `INSERT INTO briefing (sessao_id, resumo_jornada, canais_utilizados, tom_emocional, motivo_transbordo, sugestao_resolucao)
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [sessao_id, resumo_jornada, canaisUtilizados, tom_emocional, motivo, sugestao_resolucao]
+    [sessaoId, resumoJornada, canaisUtilizados, tomEmocional, motivo, sugestaoResolucao]
   );
-  await pool.query(`UPDATE sessao SET estado = 'TRANSBORDO_PENDENTE', atualizado_em = now() WHERE id = $1`, [sessao_id]);
-  await pool.query(`INSERT INTO handoff (briefing_id, canal_origem) VALUES ($1, $2)`, [briefingRes.rows[0].id, canaisUtilizados.split(",")[0]?.trim()]);
-  await audit("orchestrator", "handoff.acionado", sessao_id);
+  await pool.query(`UPDATE sessao SET estado = 'TRANSBORDO_PENDENTE', atualizado_em = now() WHERE id = $1`, [sessaoId]);
+  await pool.query(`INSERT INTO handoff (briefing_id, canal_origem) VALUES ($1, $2)`, [
+    briefingRes.rows[0].id,
+    canaisUtilizados.split(",")[0]?.trim(),
+  ]);
+  await audit(ator, "handoff.acionado", sessaoId);
 
   const briefingCompleto = await getBriefingCompleto(briefingRes.rows[0].id);
   broadcast("handoff.created", briefingCompleto);
+  return briefingRes.rows[0];
+}
 
-  res.status(201).json({ briefing_id: briefingRes.rows[0].id, estado: "TRANSBORDO_PENDENTE", sugestao_resolucao, notificado_em: new Date().toISOString() });
+// POST /v1/handoff — acionado pelo Orquestrador quando não resolve sozinho
+// (RF007, RF009) — pública, chamada internamente, sem usuário logado.
+handoffRouter.post("/", h(async (req, res) => {
+  const { sessao_id, motivo, tom_emocional, resumo_jornada, sugestao_resolucao } = req.body || {};
+  if (!sessao_id || !motivo) return res.status(400).json({ erro: "sessao_id e motivo são obrigatórios" });
+
+  const briefing = await acionarHandoff(sessao_id, motivo, tom_emocional, resumo_jornada, sugestao_resolucao, "orchestrator");
+
+  res.status(201).json({ briefing_id: briefing.id, estado: "TRANSBORDO_PENDENTE", sugestao_resolucao, notificado_em: new Date().toISOString() });
 }));
 
 // GET /v1/handoff — fila de briefings (histórico + pendentes) para o Vox Briefing

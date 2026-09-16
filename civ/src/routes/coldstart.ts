@@ -5,6 +5,8 @@ import { getOrCreateCanal, gerarProtocolo } from "../helpers";
 import { cacheSessionContext } from "../redisClient";
 import { broadcast } from "../ws";
 import { h } from "../asyncHandler";
+import { nomesConferem } from "../identidade";
+import { acionarHandoff } from "./handoff";
 
 export const coldstartRouter = Router();
 
@@ -83,12 +85,33 @@ coldstartRouter.post("/answer", h(async (req, res) => {
     const telefone = draft.jaCliente ? null : identificador;
 
     // Se o CPF já pertence a um cliente cadastrado (ex.: retomando contato
-    // depois de um tempo), reconhece a conta existente em vez de duplicar.
+    // depois de um tempo), reconhece a conta existente em vez de duplicar —
+    // mas só depois de conferir que o nome digitado bate com o cadastro,
+    // igual à verificação de identidade da contratação (contratos.ts): CPF
+    // sozinho não é suficiente pra reconhecer a conta.
     let clienteId: string;
     let nomeFinal = draft.nome!;
     let clienteReconhecido = false;
     if (cpfHash) {
       const existente = await pool.query("SELECT id, nome FROM cliente WHERE cpf_hash = $1", [cpfHash]);
+      if (existente.rows.length && !nomesConferem(draft.nome!, existente.rows[0].nome)) {
+        // CPF já cadastrado, mas o nome não confere — não dá pra criar um
+        // segundo cadastro com o mesmo CPF (cpf_hash é UNIQUE) nem
+        // reconhecer a conta de outra pessoa. Escala pra um atendente
+        // humano confirmar a identidade, igual ao 409 de contratos.ts.
+        const mensagem = "Os dados informados não conferem com o nosso cadastro. Por segurança, vou te transferir para um atendente confirmar sua identidade.";
+        const canalIdEscalada = await getOrCreateCanal(draft.canal);
+        await pool.query(`INSERT INTO mensagem (sessao_id, canal_id, remetente, conteudo) VALUES ($1, $2, 'vox', $3)`, [sessao_id, canalIdEscalada, mensagem]);
+        await acionarHandoff(
+          sessao_id,
+          "divergência de identidade no reconhecimento do cliente (Cold Start)",
+          null,
+          `Cliente informou CPF de um cadastro existente, mas o nome digitado ("${draft.nome}") não confere com o nome do cadastro.`,
+          "Confirmar identidade do cliente antes de prosseguir.",
+        );
+        drafts.delete(sessao_id);
+        return res.json({ sessao_id, estado: "TRANSBORDO_PENDENTE", mensagem });
+      }
       if (existente.rows.length) {
         clienteId = existente.rows[0].id;
         nomeFinal = existente.rows[0].nome;
