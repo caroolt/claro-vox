@@ -245,7 +245,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
 
           {aba === "atendentes" && <AtendentesTab usuarioLogadoId={usuario.id} />}
 
-          {aba === "fraude" && <FraudeTab onAbrirCliente={setClienteDrawerId} />}
+          {aba === "fraude" && <FraudeTab onAbrirCliente={setClienteDrawerId} ultimoEvento={ultimoEvento} />}
 
           {aba === "configuracoes" && <ConfiguracoesTab />}
         </div>

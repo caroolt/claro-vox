@@ -4,6 +4,7 @@ import "reactflow/dist/style.css";
 import { AlertTriangle, Check, Info, Lock, Search, ShieldAlert, Unlock, X } from "lucide-react";
 import { civ, fraude } from "../../api";
 import type { AlertaFraude, ConfiancaFraude, GrafoFraude } from "../../types";
+import type { WsEvent } from "../../useBriefingSocket";
 import { SectionTitle } from "./ui";
 import { fmtDataHora } from "./meta";
 
@@ -49,7 +50,13 @@ function nomeParaFoco(alerta: AlertaFraude): string {
   return clientesDoAlerta(alerta)[0]?.nome || "";
 }
 
-export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => void }) {
+export function FraudeTab({
+  onAbrirCliente,
+  ultimoEvento,
+}: {
+  onAbrirCliente: (id: string) => void;
+  ultimoEvento?: WsEvent | null;
+}) {
   const [alertas, setAlertas] = useState<AlertaFraude[]>([]);
   const [grafo, setGrafo] = useState<GrafoFraude | null>(null);
   const [busca, setBusca] = useState("");
@@ -84,6 +91,19 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
   useEffect(() => {
     carregar();
   }, []);
+
+  // Tempo real: a CIV avisa via WebSocket quando um alerta novo é gerado
+  // (Regra A na hora da contratação, ou o job periódico que roda as Regras
+  // B/C — ver deteccaoFraude.ts) ou quando alguém muda o status de um
+  // alerta em outro painel. Sem isso, essa aba só atualizava se o admin
+  // recarregasse manualmente.
+  useEffect(() => {
+    if (!ultimoEvento) return;
+    if (ultimoEvento.type === "fraude.alerta.criado" || ultimoEvento.type === "fraude.alerta.atualizado") {
+      carregar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ultimoEvento]);
 
   async function atualizarStatus(id: string, status: "revisado" | "descartado") {
     await fraude.atualizarAlerta(id, status);
