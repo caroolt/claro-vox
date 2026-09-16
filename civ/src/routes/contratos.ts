@@ -80,6 +80,24 @@ contratosRouter.post("/", h(async (req, res) => {
     );
   }
 
+  // Regra A do motor de fraude (Seção "Camada de Fraude"), checada EM TEMPO
+  // REAL contra o CPF antes de confirmar — não deixa a linha suspeita
+  // passar pra só descobrir depois: se o cliente já está no limite de
+  // linhas pré-pagas, essa contratação é recusada e vira transbordo (o
+  // Orquestrador trata o 409 abaixo como requer_transbordo, igual às
+  // divergências de identidade), pro atendente ver a suspeita de fraude
+  // na fila assim que ela acontece, não só se abrir a aba Fraude por conta
+  // própria depois.
+  if (tipo_plano === "pre-pago") {
+    const excedeu = await registrarESeExcedeuLimiteVolumeCpf(cliente.id, cliente.nome);
+    if (excedeu) {
+      return res.status(409).json({
+        erro: "possivel_fraude_volume",
+        mensagem: "Não consigo confirmar essa contratação agora.",
+      });
+    }
+  }
+
   await pool.query(`UPDATE cliente SET data_nascimento = $1 WHERE id = $2`, [data_nascimento, cliente.id]);
 
   // Reaproveita o protocolo da sessão (identifica a chamada) como
@@ -91,14 +109,6 @@ contratosRouter.post("/", h(async (req, res) => {
   );
   await audit("orchestrator", "contrato.confirmado", contratoRes.rows[0].id);
 
-  // Regra A do motor de fraude (Seção "Camada de Fraude"): volume de linhas
-  // pré-pagas confirmadas no mesmo CPF acima do limite configurável. Não
-  // bloqueia a contratação (já confirmada acima) — gera um alerta de alta
-  // confiança para investigação, com a evidência que embasa a decisão (XAI).
-  if (tipo_plano === "pre-pago") {
-    await checarRegraAVolumeCpf(cliente.id, cliente.nome);
-  }
-
   res.status(201).json({
     contrato_id: contratoRes.rows[0].id,
     protocolo,
@@ -107,7 +117,13 @@ contratosRouter.post("/", h(async (req, res) => {
   });
 }));
 
-async function checarRegraAVolumeCpf(clienteId: string, clienteNome: string) {
+// Conta quantas linhas pré-pagas confirmadas esse CPF já tem; se já está no
+// limite (essa seria mais uma além do permitido), registra/atualiza o
+// alerta (mesmo formato de evidência usado pelo motor de varredura em
+// fraude.ts — `clientes: [{id, nome}]`, necessário pro botão de bloqueio
+// da aba Fraude funcionar não importa por qual caminho o alerta nasceu) e
+// devolve true pra recusar a contratação.
+async function registrarESeExcedeuLimiteVolumeCpf(clienteId: string, clienteNome: string): Promise<boolean> {
   const [limiarRes, contagemRes] = await Promise.all([
     pool.query(`SELECT valor FROM configuracao WHERE chave = 'limiar_fraude_pre_pago'`),
     pool.query(
@@ -118,11 +134,11 @@ async function checarRegraAVolumeCpf(clienteId: string, clienteNome: string) {
   ]);
   const limiar = limiarRes.rows.length ? Number(limiarRes.rows[0].valor) : 3;
   const total = Number(contagemRes.rows[0]?.total || 0);
-  if (total <= limiar) return;
+  if (total < limiar) return false;
 
-  const explicacao = `${clienteNome} tem ${total} linhas pré-pagas confirmadas no próprio CPF, acima do limite configurado de ${limiar}.`;
+  const explicacao = `${clienteNome} já tem ${total} linhas pré-pagas confirmadas no próprio CPF (limite configurado: ${limiar}). Nova solicitação recusada e enviada para revisão humana.`;
   const evidencia = {
-    cliente_nome: clienteNome,
+    clientes: [{ id: clienteId, nome: clienteNome }],
     total_linhas_pre_pago: total,
     protocolos: contagemRes.rows[0].protocolos,
     limiar,
@@ -144,4 +160,5 @@ async function checarRegraAVolumeCpf(clienteId: string, clienteNome: string) {
     );
   }
   await audit("civ", "fraude.alerta.gerado", clienteId);
+  return true;
 }
