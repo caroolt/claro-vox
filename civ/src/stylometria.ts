@@ -12,11 +12,20 @@ export interface PerfilEstilo {
   taxa_pontuacao: number;
   taxa_emoji: number;
   taxa_maiusculas: number;
+  tamanho_medio_palavra: number;
+  diversidade_lexical: number;
 }
 
 const EMOJI_REGEX = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu;
 const PONTUACAO_REGEX = /[!?…]|\.\.\./g;
 
+// taxa_pontuacao/taxa_emoji/taxa_maiusculas ficam perto de 0 para a grande
+// maioria das mensagens de atendimento (poucas pessoas gritam, usam emoji
+// ou pontuação repetida) — sozinhas, quase todo mundo "parece igual" nelas
+// (diff ~0 entre dois clientes quaisquer vira falsa similaridade alta).
+// tamanho_medio_palavra e diversidade_lexical variam mais entre pessoas
+// reais (jeito de escrever, vocabulário) e são o que de fato distingue
+// estilos parecidos de coincidência estatística.
 export function extrairPerfilEstilo(mensagens: string[]): PerfilEstilo | null {
   if (!mensagens.length) return null;
 
@@ -25,6 +34,9 @@ export function extrairPerfilEstilo(mensagens: string[]): PerfilEstilo | null {
   let totalEmoji = 0;
   let totalMaiusculas = 0;
   let totalAlfa = 0;
+  let totalPalavras = 0;
+  let totalCharsPalavras = 0;
+  const vocabulario = new Set<string>();
 
   for (const msg of mensagens) {
     totalChars += msg.length;
@@ -36,6 +48,12 @@ export function extrairPerfilEstilo(mensagens: string[]): PerfilEstilo | null {
         if (ch === ch.toUpperCase()) totalMaiusculas++;
       }
     }
+    const palavras = msg.toLowerCase().match(/[a-zà-ú0-9]+/gi) || [];
+    for (const p of palavras) {
+      totalPalavras++;
+      totalCharsPalavras += p.length;
+      vocabulario.add(p);
+    }
   }
 
   return {
@@ -43,6 +61,8 @@ export function extrairPerfilEstilo(mensagens: string[]): PerfilEstilo | null {
     taxa_pontuacao: totalChars > 0 ? Math.min((totalPontuacao / totalChars) * 20, 1) : 0,
     taxa_emoji: Math.min(totalEmoji / mensagens.length, 1),
     taxa_maiusculas: totalAlfa > 0 ? totalMaiusculas / totalAlfa : 0,
+    tamanho_medio_palavra: totalPalavras > 0 ? Math.min(totalCharsPalavras / totalPalavras / 10, 1) : 0,
+    diversidade_lexical: totalPalavras > 0 ? vocabulario.size / totalPalavras : 0,
   };
 }
 

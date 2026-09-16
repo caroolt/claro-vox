@@ -53,6 +53,10 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
   const [alertas, setAlertas] = useState<AlertaFraude[]>([]);
   const [grafo, setGrafo] = useState<GrafoFraude | null>(null);
   const [busca, setBusca] = useState("");
+  const [filtroRegra, setFiltroRegra] = useState("");
+  const [filtroConfianca, setFiltroConfianca] = useState("");
+  const [filtroDataInicio, setFiltroDataInicio] = useState("");
+  const [filtroDataFim, setFiltroDataFim] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [explicacao, setExplicacao] = useState<{ titulo: string; alerta: AlertaFraude } | null>(null);
@@ -107,30 +111,58 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
     [grafo]
   );
 
+  // Filtros de regra/confiança/data — aplicados antes da busca por nome, e
+  // compartilhados entre a tabela e o grafo (o grafo só desenha arestas dos
+  // alertas que passam nesses filtros, não a base toda de alertas abertos).
+  const alertasComFiltroBasico = useMemo(() => {
+    return alertas.filter((a) => {
+      if (filtroRegra && a.regra !== filtroRegra) return false;
+      if (filtroConfianca && a.confianca !== filtroConfianca) return false;
+      if (filtroDataInicio && a.criado_em < filtroDataInicio) return false;
+      if (filtroDataFim && a.criado_em > `${filtroDataFim}T23:59:59`) return false;
+      return true;
+    });
+  }, [alertas, filtroRegra, filtroConfianca, filtroDataInicio, filtroDataFim]);
+
   // A mesma busca do grafo filtra a tabela de alertas — antes só afetava o
   // grafo, deixando a lista sempre cheia mesmo depois de focar num caso.
   const termoBusca = busca.trim().toLowerCase();
   const alertasFiltrados = useMemo(() => {
-    if (!termoBusca) return alertas;
-    return alertas.filter((a) => clientesDoAlerta(a).some((c) => c.nome.toLowerCase().includes(termoBusca)));
-  }, [alertas, termoBusca]);
+    if (!termoBusca) return alertasComFiltroBasico;
+    return alertasComFiltroBasico.filter((a) => clientesDoAlerta(a).some((c) => c.nome.toLowerCase().includes(termoBusca)));
+  }, [alertasComFiltroBasico, termoBusca]);
+
+  const idsAlertasVisiveis = useMemo(() => new Set(alertasComFiltroBasico.map((a) => a.id)), [alertasComFiltroBasico]);
 
   // A base pode ter milhões de clientes, mas o grafo nunca carrega a base
   // inteira (só quem já tem alerta em aberto) — ainda assim, com muitos
   // alertas simultâneos, catar um nó no olho não escala. A busca filtra
   // pelo nome e mantém os nós conectados a ele (ex.: buscar "Marcos" traz
   // junto as linhas pré-pagas dele), pra usar o grafo como zoom de uma
-  // investigação específica, não como ferramenta de garimpo visual.
+  // investigação específica, não como ferramenta de garimpo visual. Os
+  // filtros de regra/confiança/data restringem as arestas ANTES da busca,
+  // senão um cliente com muitos alertas (ex.: vários indícios fracos da
+  // Regra C) arrasta de volta praticamente a base inteira pela expansão de
+  // componente conectado.
   const { nodes, edges } = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
     if (!grafo) return { nodes: [], edges: [] };
 
-    let idsVisiveis = new Set(grafo.nos.map((n) => n.id));
+    const arestasComFiltroBasico = grafo.arestas.filter((a) => idsAlertasVisiveis.has(a.alerta_id));
+
+    let idsVisiveis = new Set<string>();
+    arestasComFiltroBasico.forEach((a) => {
+      idsVisiveis.add(a.origem);
+      idsVisiveis.add(a.destino);
+    });
+
     if (termoBusca) {
-      idsVisiveis = new Set(grafo.nos.filter((n) => n.nome.toLowerCase().includes(termoBusca)).map((n) => n.id));
+      idsVisiveis = new Set(
+        grafo.nos.filter((n) => idsVisiveis.has(n.id) && n.nome.toLowerCase().includes(termoBusca)).map((n) => n.id)
+      );
       let mudou = true;
       while (mudou) {
         mudou = false;
-        for (const a of grafo.arestas) {
+        for (const a of arestasComFiltroBasico) {
           if (idsVisiveis.has(a.origem) && !idsVisiveis.has(a.destino)) {
             idsVisiveis.add(a.destino);
             mudou = true;
@@ -144,7 +176,7 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
     }
 
     const nosVisiveis = grafo.nos.filter((n) => idsVisiveis.has(n.id));
-    const arestasVisiveis = grafo.arestas.filter((a) => idsVisiveis.has(a.origem) && idsVisiveis.has(a.destino));
+    const arestasVisiveis = arestasComFiltroBasico.filter((a) => idsVisiveis.has(a.origem) && idsVisiveis.has(a.destino));
     const posicoes = calcularPosicoes(nosVisiveis.map((n) => n.id));
 
     const nodes: Node[] = nosVisiveis.map((n) => ({
@@ -186,7 +218,7 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
     }));
 
     return { nodes, edges };
-  }, [grafo, termoBusca]);
+  }, [grafo, termoBusca, idsAlertasVisiveis]);
 
   function onNodeClick(_: unknown, node: Node) {
     if (node.data?.tipo === "cliente") onAbrirCliente(node.id);
@@ -207,22 +239,71 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
       <section>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <SectionTitle icone={ShieldAlert}>Grafo de identidades cruzadas</SectionTitle>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" strokeWidth={2} />
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={filtroRegra}
+              onChange={(e) => setFiltroRegra(e.target.value)}
+              className="rounded-lg border border-gray-300 py-1.5 px-2 text-xs text-gray-600 focus:border-claro-red focus:outline-none"
+            >
+              <option value="">Todas as regras</option>
+              {Object.entries(REGRA_META).map(([chave, meta]) => (
+                <option key={chave} value={chave}>{meta.titulo}</option>
+              ))}
+            </select>
+            <select
+              value={filtroConfianca}
+              onChange={(e) => setFiltroConfianca(e.target.value)}
+              className="rounded-lg border border-gray-300 py-1.5 px-2 text-xs text-gray-600 focus:border-claro-red focus:outline-none"
+            >
+              <option value="">Toda confiança</option>
+              {Object.entries(CONFIANCA_META).map(([chave, meta]) => (
+                <option key={chave} value={chave}>{meta.label}</option>
+              ))}
+            </select>
             <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar cliente ou linha no grafo…"
-              className="w-64 rounded-lg border border-gray-300 py-1.5 pl-8 pr-7 text-xs focus:border-claro-red focus:outline-none"
+              type="date"
+              value={filtroDataInicio}
+              onChange={(e) => setFiltroDataInicio(e.target.value)}
+              title="De"
+              className="rounded-lg border border-gray-300 py-1.5 px-2 text-xs text-gray-600 focus:border-claro-red focus:outline-none"
             />
-            {busca && (
+            <input
+              type="date"
+              value={filtroDataFim}
+              onChange={(e) => setFiltroDataFim(e.target.value)}
+              title="Até"
+              className="rounded-lg border border-gray-300 py-1.5 px-2 text-xs text-gray-600 focus:border-claro-red focus:outline-none"
+            />
+            {(filtroRegra || filtroConfianca || filtroDataInicio || filtroDataFim) && (
               <button
-                onClick={() => setBusca("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                onClick={() => {
+                  setFiltroRegra("");
+                  setFiltroConfianca("");
+                  setFiltroDataInicio("");
+                  setFiltroDataFim("");
+                }}
+                className="text-[11px] text-gray-400 hover:text-claro-red"
               >
-                <X className="h-3.5 w-3.5" strokeWidth={2} />
+                Limpar filtros
               </button>
             )}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" strokeWidth={2} />
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar cliente ou linha no grafo…"
+                className="w-64 rounded-lg border border-gray-300 py-1.5 pl-8 pr-7 text-xs focus:border-claro-red focus:outline-none"
+              />
+              {busca && (
+                <button
+                  onClick={() => setBusca("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={2} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
         <p className="mb-2 text-xs text-gray-400">
@@ -233,7 +314,9 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
         <div className="h-[420px] rounded-xl border border-gray-200 bg-white">
           {nodes.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-gray-400">
-              {busca ? "Nenhum resultado para essa busca." : "Nenhuma identidade cruzada em aberto no momento."}
+              {busca || filtroRegra || filtroConfianca || filtroDataInicio || filtroDataFim
+                ? "Nenhum resultado para esse filtro."
+                : "Nenhuma identidade cruzada em aberto no momento."}
             </div>
           ) : (
             <ReactFlow
@@ -263,14 +346,16 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
           <SectionTitle icone={AlertTriangle}>Alertas em aberto</SectionTitle>
           <span className="text-[11px] text-gray-400">
-            {termoBusca
-              ? `${alertasFiltrados.length} de ${alertas.length} alertas (filtrado por "${busca.trim()}")`
+            {termoBusca || filtroRegra || filtroConfianca || filtroDataInicio || filtroDataFim
+              ? `${alertasFiltrados.length} de ${alertas.length} alertas (filtrado)`
               : `${alertas.length} alertas · ${alertas.filter((a) => a.confianca === "alta").length} de confiança alta`}
           </span>
         </div>
         {alertasFiltrados.length === 0 ? (
           <p className="text-sm text-gray-400">
-            {termoBusca ? "Nenhum alerta bate com essa busca." : "Nenhum alerta em aberto."}
+            {termoBusca || filtroRegra || filtroConfianca || filtroDataInicio || filtroDataFim
+              ? "Nenhum alerta bate com esse filtro."
+              : "Nenhum alerta em aberto."}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
