@@ -68,6 +68,11 @@ export function ChatSimulator() {
   const [mostrarTrocaCanal, setMostrarTrocaCanal] = useState(false);
   const [cpfTroca, setCpfTroca] = useState("");
   const [atendimentoHumano, setAtendimentoHumano] = useState(false);
+  // true depois que a sessão atual é encerrada por inatividade (ver
+  // handoff.timeout abaixo) — a sessão morreu, mas a janela de chat continua
+  // aberta; a próxima mensagem do cliente deve abrir uma sessão nova em vez
+  // de tentar continuar postando numa sessão já encerrada.
+  const [precisaNovaSessao, setPrecisaNovaSessao] = useState(false);
   const fimRef = useRef<HTMLDivElement>(null);
   const { ultimoEvento } = useBriefingSocket();
 
@@ -85,7 +90,9 @@ export function ChatSimulator() {
   // bem claro, para o cliente distinguir quando está falando com um humano.
   useEffect(() => {
     if (!ultimoEvento || !sessaoId) return;
-    const payload = ultimoEvento.payload as { sessao_id?: string; remetente?: string; conteudo?: string } | undefined;
+    const payload = ultimoEvento.payload as
+      | { sessao_id?: string; remetente?: string; conteudo?: string; mensagem?: string }
+      | undefined;
     if (payload?.sessao_id !== sessaoId) return;
 
     if (ultimoEvento.type === "message.created" && payload.remetente === "atendente" && payload.conteudo) {
@@ -94,6 +101,13 @@ export function ChatSimulator() {
       setAtendimentoHumano(true);
     } else if (ultimoEvento.type === "handoff.closed") {
       add("sistema", "Atendimento encerrado pelo atendente.", undefined, { alvo: "atendente" });
+    } else if (ultimoEvento.type === "handoff.timeout") {
+      // Encerrado sozinho por inatividade (ver civ/src/jobs/timeoutAtendente.ts)
+      // — a sessão morreu, mas a conversa continua na tela; a próxima
+      // mensagem do cliente abre uma sessão nova automaticamente.
+      add("vox", payload.mensagem || "Conversa encerrada por inatividade.");
+      setAtendimentoHumano(false);
+      setPrecisaNovaSessao(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ultimoEvento]);
@@ -119,7 +133,18 @@ export function ChatSimulator() {
     add("cliente", texto);
     setCarregando(true);
     try {
-      if (fase === "coldstart" && sessaoId) {
+      if (precisaNovaSessao) {
+        // A sessão anterior morreu por inatividade — abre uma sessão nova
+        // (Cold Start) neste mesmo canal em vez de tentar continuar
+        // postando numa sessão encerrada. A mensagem que o cliente acabou
+        // de digitar não serve de resposta pra primeira pergunta do Cold
+        // Start, então só some deste envio (aceitável pro MVP).
+        setPrecisaNovaSessao(false);
+        const r = await orchestrator.coldstartStart(canal, `${canal}-demo-${uid()}`, undefined, obterDispositivoId());
+        setSessaoId(r.sessao_id);
+        setFase("coldstart");
+        add("vox", r.proxima_pergunta);
+      } else if (fase === "coldstart" && sessaoId) {
         const r = await orchestrator.coldstartAnswer(sessaoId, texto);
         if (r.estado === "ATIVA") {
           setFase("ativa");
@@ -169,6 +194,13 @@ export function ChatSimulator() {
         setClienteNome(r.cliente?.nome || null);
         setClienteId(r.cliente?.id || null);
         setProtocolo(r.protocolo || null);
+        // RF004 sempre cria uma sessão nova (ATIVA), independente do estado
+        // de qualquer sessão anterior desse cliente em outro canal — sem
+        // isso, se a sessão anterior estivesse EM_ATENDIMENTO_HUMANO, essa
+        // flag ficava "grudada" e as mensagens da sessão nova eram só
+        // gravadas (sem resposta do Vox nem chegar a atendente nenhum,
+        // já que não existe atendente designado para a sessão nova).
+        setAtendimentoHumano(false);
         add("sistema", `📡 Reconhecido automaticamente no canal ${canal} (RF004), trazendo o contexto do canal anterior: ${r.canal_anterior || "nenhum"}.`);
         add("vox", r.mensagem);
       } else {

@@ -5,6 +5,7 @@ import type { Briefing, ClienteAlerta, SessaoResumo } from "../../types";
 import {
   CANAL_META,
   CANAL_ORDEM,
+  ehHoje,
   ESTADO_META,
   ESTADO_ORDEM,
   FILTROS_VAZIOS,
@@ -95,7 +96,11 @@ export function OperacaoTab({
   }
 
   const pendentes = fila.filter((b) => !b.encerrado_em);
-  const filaBase = filaTab === "pendentes" ? pendentes : fila;
+  // "Histórico" é o que já foi encerrado hoje — não a fila inteira (que
+  // vem da API com até 100 registros dos últimos dias, o que fazia a aba
+  // acumular transbordos de dias anteriores em vez de mostrar só o dia).
+  const historicoHoje = fila.filter((b) => b.encerrado_em && ehHoje(b.encerrado_em));
+  const filaBase = filaTab === "pendentes" ? pendentes : historicoHoje;
   const filaFiltrada = filaBase
     .filter(
       (b) =>
@@ -203,7 +208,7 @@ export function OperacaoTab({
                   filaTab === "todos" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500"
                 }`}
               >
-                Histórico ({fila.length})
+                Histórico de hoje ({historicoHoje.length})
               </button>
             </div>
           </div>
@@ -213,7 +218,7 @@ export function OperacaoTab({
                 ? "Nenhum transbordo bate com os filtros."
                 : filaTab === "pendentes"
                 ? "Nenhum atendimento aguardando transbordo no momento."
-                : "Nenhum transbordo registrado ainda."}
+                : "Nenhum transbordo encerrado hoje ainda."}
             </p>
           ) : (
             <div className="space-y-2">

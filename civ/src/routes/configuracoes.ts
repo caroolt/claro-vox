@@ -5,10 +5,13 @@ import { requireAuth, requireRole } from "../middleware/auth";
 
 export const configuracoesRouter = Router();
 
-// Parâmetros operacionais editáveis (aba "Configurações", exclusiva do
-// admin) — meta de transbordo e limiares do motor de detecção de fraude,
-// em vez de constantes fixas no código (ver civ/schema.sql: configuracao).
-configuracoesRouter.use(requireAuth, requireRole("admin"));
+// Parâmetros operacionais — meta de transbordo e limiares do motor de
+// detecção de fraude, em vez de constantes fixas no código (ver
+// civ/schema.sql: configuracao). Editar é exclusivo do admin (aba
+// "Configurações"), mas ler é liberado pra qualquer usuário autenticado —
+// o atendente também precisa saber, por exemplo, o timeout de inatividade
+// pra avisar o cliente na mensagem de abertura (ver AgentPanel.tsx).
+configuracoesRouter.use(requireAuth);
 
 // GET /v1/configuracoes — lista todos os parâmetros.
 configuracoesRouter.get("/", h(async (_req, res) => {
@@ -20,7 +23,7 @@ configuracoesRouter.get("/", h(async (_req, res) => {
 
 // PUT /v1/configuracoes/:chave — atualiza um parâmetro existente. Não cria
 // chaves novas por aqui (evita configurações "soltas" sem uso no código).
-configuracoesRouter.put("/:chave", h(async (req, res) => {
+configuracoesRouter.put("/:chave", requireRole("admin"), h(async (req, res) => {
   const { chave } = req.params;
   const { valor } = req.body || {};
   if (typeof valor !== "number" || !Number.isFinite(valor)) {

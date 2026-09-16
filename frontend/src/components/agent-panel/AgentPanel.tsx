@@ -63,14 +63,17 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
 
   async function carregarTudo() {
     // Métricas e auditoria (Visão geral) são exclusivas do admin — atendente
-    // não tem permissão na CIV para essas rotas, então nem chamamos para essa role.
+    // não tem permissão na CIV para essas rotas, então nem chamamos para essa
+    // role. Configurações, por outro lado, qualquer role autenticada pode
+    // ler (só editar é admin-only) — o atendente precisa saber o timeout de
+    // inatividade pra mencionar na mensagem de abertura (ver responder()).
     const [s, f, m, k, a, cfg] = await Promise.all([
       civ.sessions(true),
       civ.handoffQueue(),
       usuario.role === "admin" ? civ.metrics() : Promise.resolve(null),
       civ.knowledge(),
       usuario.role === "admin" ? civ.auditoria() : Promise.resolve([]),
-      usuario.role === "admin" ? configuracoesApi.listar() : Promise.resolve([]),
+      configuracoesApi.listar(),
     ]);
     setSessoes(s);
     setFila(f);
@@ -102,16 +105,25 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
   }
 
   async function responder(b: Briefing) {
+    const canal = canalDaSessao(b.sessao_id, b.canal || b.canais_utilizados);
     if (!b.atendente_id) {
       await civ.handoffAssumir(b.id);
+      // Mensagem de abertura automática, só na primeira vez que alguém
+      // assume — avisa de antemão sobre o timeout de inatividade (evita
+      // que o cliente seja pego de surpresa quando a sessão é encerrada
+      // sozinha, ver civ/src/jobs/timeoutAtendente.ts), pra não precisar
+      // digitar isso toda vez.
+      const timeoutMin = configuracoes.find((c) => c.chave === "timeout_atendente_min")?.valor ?? 15;
+      await civ.enviarMensagem(
+        b.sessao_id,
+        "atendente",
+        canal,
+        `Olá! Aqui é um atendente da Claro e vou continuar seu atendimento a partir de agora. Se você não responder em até ${timeoutMin} minutos, a conversa é encerrada automaticamente, mas pode chamar de novo a qualquer momento para retomar.`
+      );
       await carregarTudo();
     }
     setBriefingAberto(null);
-    setChatSessao({
-      id: b.sessao_id,
-      clienteNome: b.cliente_nome,
-      canal: canalDaSessao(b.sessao_id, b.canal || b.canais_utilizados),
-    });
+    setChatSessao({ id: b.sessao_id, clienteNome: b.cliente_nome, canal });
   }
 
   async function encerrar(id: string) {

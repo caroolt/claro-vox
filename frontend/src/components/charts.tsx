@@ -8,7 +8,8 @@ export const STATUS_HEX: Record<string, string> = {
   warning: "#fab219",
   serious: "#ec835a",
   critical: "#d03b3b",
-  neutral: "#ADAFAF", // cinza-Claro — estado sem urgência (em andamento/encerrado)
+  neutral: "#ADAFAF", // cinza-Claro — estado sem urgência, encerrado/inativo
+  info: "#2a78d6", // azul — estado em andamento mas ainda não operacional (ex.: Cold Start)
 };
 
 export const CAT_HEX = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
