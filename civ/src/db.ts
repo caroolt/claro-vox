@@ -89,7 +89,7 @@ export async function ensureSchema() {
 
   await pool.query(`
     INSERT INTO configuracao (chave, valor, descricao) VALUES
-      ('meta_transbordo_pct', 25, 'Meta (%) da taxa de transbordo — acima disso a Visão geral destaca o indicador'),
+      ('meta_transbordo_pct', 25, 'Meta (%) da taxa de transbordo. Acima disso, a Visão geral destaca o indicador'),
       ('limiar_fraude_pre_pago', 3, 'Nº de contratos pré-pagos confirmados por cliente acima do qual um novo pedido gera alerta (Regra A)'),
       ('limiar_similaridade_estilo', 0.85, 'Similaridade mínima (0-1) do vetor estilométrico entre clientes de CPFs diferentes para gerar alerta (Regra C)')
     ON CONFLICT (chave) DO NOTHING
