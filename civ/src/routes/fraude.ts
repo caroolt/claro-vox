@@ -142,7 +142,7 @@ async function detectarRegraC(limiar: number): Promise<AlertaGerado[]> {
             Object.entries(porFeature).map(([k, v]) => [k, Number((v as number).toFixed(2))])
           ),
         },
-        explicacao: `${a.nome} e ${b.nome} têm padrão de escrita ${Math.round(similaridade * 100)}% semelhante, apesar de CPFs diferentes — indício fraco, requer investigação manual.`,
+        explicacao: `${a.nome} e ${b.nome} têm padrão de escrita ${Math.round(similaridade * 100)}% semelhante, apesar de CPFs diferentes. Indício fraco, requer investigação manual.`,
         confianca: "baixa",
       });
     }
