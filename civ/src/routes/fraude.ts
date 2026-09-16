@@ -105,6 +105,12 @@ async function detectarRegraB(): Promise<AlertaGerado[]> {
   return alertas;
 }
 
+// LIMITAÇÃO CONHECIDA: compara cada cliente com todos os outros (par a
+// par), custo O(n²) no número de clientes com mensagens suficientes. Viável
+// para a base de demonstração, mas não escala para uma base de produção
+// (milhões de clientes) — precisaria de uma etapa de bucketing/clustering
+// antes (só comparar dentro de grupos com características parecidas) ou
+// rodar como job em lote, não sob demanda a cada GET.
 async function detectarRegraC(limiar: number): Promise<AlertaGerado[]> {
   const r = await pool.query(
     `
@@ -216,8 +222,27 @@ fraudeRouter.put("/alertas/:id", h(async (req, res) => {
   res.json(result.rows[0]);
 }));
 
+interface NoGrafo {
+  id: string;
+  nome: string;
+  tipo: "cliente" | "linha";
+}
+
+interface ArestaGrafo {
+  id: string;
+  origem: string;
+  destino: string;
+  alerta_id: string;
+  regra: string;
+  confianca: string;
+  explicacao: string;
+}
+
 // GET /v1/fraude/grafo — nós/arestas só dos clientes envolvidos em alertas
 // em aberto (nunca a base inteira) para o grafo do painel (react-flow).
+// A Regra A também vira arestas: cada linha pré-paga do cliente aparece
+// como um nó satélite conectado a ele, pra mostrar o leque de contas de
+// verdade em vez de só marcar o cliente com uma borda.
 fraudeRouter.get("/grafo", h(async (_req, res) => {
   const alertasRes = await pool.query(
     `SELECT id, regra, clientes_ids, evidencia, explicacao, confianca FROM alerta_fraude WHERE status = 'aberto'`
@@ -232,39 +257,48 @@ fraudeRouter.get("/grafo", h(async (_req, res) => {
     nomesRes.rows.forEach((r) => nomes.set(r.id, r.nome));
   }
 
-  const nos = [...clienteIds].map((id) => ({ id, nome: nomes.get(id) || "cliente removido" }));
+  const nos: NoGrafo[] = [...clienteIds].map((id) => ({
+    id,
+    nome: nomes.get(id) || "cliente removido",
+    tipo: "cliente",
+  }));
+  const arestas: ArestaGrafo[] = [];
 
-  // A Regra A é interna a um único cliente (não liga identidades
-  // diferentes) — vira destaque no próprio nó, não uma aresta.
-  const alertasVolume = alertasRes.rows.filter((a) => a.regra === "A_volume_cpf");
-  const arestas = alertasRes.rows
-    .filter((a) => a.regra !== "A_volume_cpf")
-    .flatMap((a) => {
-      const ids: string[] = a.clientes_ids;
-      const pares: {
-        id: string;
-        origem: string;
-        destino: string;
-        alerta_id: string;
-        regra: string;
-        confianca: string;
-        explicacao: string;
-      }[] = [];
-      for (let i = 0; i < ids.length; i++) {
-        for (let j = i + 1; j < ids.length; j++) {
-          pares.push({
-            id: `${a.id}-${i}-${j}`,
-            origem: ids[i],
-            destino: ids[j],
-            alerta_id: a.id,
-            regra: a.regra,
-            confianca: a.confianca,
-            explicacao: a.explicacao,
-          });
-        }
+  for (const a of alertasRes.rows) {
+    if (a.regra === "A_volume_cpf") {
+      const clienteId: string = a.clientes_ids[0];
+      const protocolos: string[] = a.evidencia?.protocolos || [];
+      protocolos.forEach((protocolo, i) => {
+        const linhaId = `${a.id}-linha-${i}`;
+        nos.push({ id: linhaId, nome: `Linha ${protocolo}`, tipo: "linha" });
+        arestas.push({
+          id: `${a.id}-aresta-${i}`,
+          origem: clienteId,
+          destino: linhaId,
+          alerta_id: a.id,
+          regra: a.regra,
+          confianca: a.confianca,
+          explicacao: a.explicacao,
+        });
+      });
+      continue;
+    }
+
+    const ids: string[] = a.clientes_ids;
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        arestas.push({
+          id: `${a.id}-${i}-${j}`,
+          origem: ids[i],
+          destino: ids[j],
+          alerta_id: a.id,
+          regra: a.regra,
+          confianca: a.confianca,
+          explicacao: a.explicacao,
+        });
       }
-      return pares;
-    });
+    }
+  }
 
-  res.json({ nos, arestas, alertas_volume: alertasVolume });
+  res.json({ nos, arestas });
 }));

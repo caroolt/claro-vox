@@ -209,6 +209,9 @@ export interface AlertaFraude {
 export interface GrafoFraudeNo {
   id: string;
   nome: string;
+  // "linha" = uma conta/contrato pré-pago do cliente (Regra A) — nó satélite,
+  // não é uma identidade separada.
+  tipo: "cliente" | "linha";
 }
 
 export interface GrafoFraudeAresta {
@@ -224,7 +227,6 @@ export interface GrafoFraudeAresta {
 export interface GrafoFraude {
   nos: GrafoFraudeNo[];
   arestas: GrafoFraudeAresta[];
-  alertas_volume: AlertaFraude[];
 }
 
 export interface ClienteDetalhe {
