@@ -2,27 +2,11 @@ import { Router } from "express";
 import { pool, audit } from "../db";
 import { hashCpf } from "../crypto";
 import { h } from "../asyncHandler";
+import { nomesConferem } from "../identidade";
 
 export const contratosRouter = Router();
 
 const TIPOS_PLANO = ["pre-pago", "controle", "pos-pago"];
-
-function normalizarNome(nome: string): string {
-  return nome
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-// Confere se o nome digitado bate com o nome em cadastro — exige que ao
-// menos o primeiro nome coincida (tolera sobrenome digitado diferente,
-// mas não deixa passar uma pessoa diferente).
-function nomesConferem(digitado: string, cadastrado: string): boolean {
-  const a = normalizarNome(digitado).split(/\s+/)[0] || "";
-  const b = normalizarNome(cadastrado).split(/\s+/)[0] || "";
-  return !!a && a === b;
-}
 
 // POST /v1/contratos — finaliza a contratação simulada de um plano
 // (pré-pago/controle/pós). Chamada internamente pelo Orquestrador ao fim do
