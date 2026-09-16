@@ -187,11 +187,12 @@ export const configuracoes = {
 // -------- Detecção de fraude cross-canal (aba "Fraude", exclusiva do admin) --------
 export const fraude = {
   alertas: () => req<AlertaFraude[]>(`${CIV_URL}/v1/fraude/alertas`),
+  historico: () => req<AlertaFraude[]>(`${CIV_URL}/v1/fraude/alertas/historico`),
   grafo: () => req<GrafoFraude>(`${CIV_URL}/v1/fraude/grafo`),
-  atualizarAlerta: (id: string, status: "revisado" | "descartado") =>
+  atualizarAlerta: (id: string, status: "revisado" | "descartado", nota?: string) =>
     req<{ id: string; status: string }>(`${CIV_URL}/v1/fraude/alertas/${id}`, {
       method: "PUT",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, nota }),
     }),
 };
 

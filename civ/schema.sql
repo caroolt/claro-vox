@@ -204,7 +204,13 @@ CREATE TABLE IF NOT EXISTS alerta_fraude (
   explicacao     TEXT NOT NULL,
   confianca      TEXT NOT NULL CHECK (confianca IN ('alta','media','baixa')),
   status         TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto','revisado','descartado')),
-  criado_em      TIMESTAMPTZ NOT NULL DEFAULT now()
+  criado_em      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Preenchidos quando o status sai de 'aberto' — a trilha de quem revisou,
+  -- quando, e (para 'revisado') o resumo da investigação feita, exigido no
+  -- momento de marcar como revisado (nunca um clique sem justificativa).
+  resolvido_em     TIMESTAMPTZ,
+  resolvido_por    TEXT,
+  nota_resolucao   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessao_estado ON sessao(estado);

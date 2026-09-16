@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactFlow, { Background, Controls, type Edge, type Node } from "reactflow";
 import "reactflow/dist/style.css";
-import { AlertTriangle, Check, Info, Lock, Search, ShieldAlert, Unlock, X } from "lucide-react";
+import { AlertTriangle, Check, History, Info, Lock, Search, ShieldAlert, Unlock, X } from "lucide-react";
 import { civ, fraude } from "../../api";
 import type { AlertaFraude, ConfiancaFraude, GrafoFraude } from "../../types";
 import type { WsEvent } from "../../useBriefingSocket";
@@ -23,6 +23,11 @@ const REGRA_META: Record<string, { titulo: string; rotuloAresta: string }> = {
   A_volume_cpf: { titulo: "Volume de linhas no mesmo CPF", rotuloAresta: "linha pré-paga" },
   B_dispositivo_ip: { titulo: "Dispositivo/IP compartilhado", rotuloAresta: "dispositivo/IP" },
   C_estilo_escrita: { titulo: "Estilo de escrita semelhante", rotuloAresta: "estilo semelhante" },
+};
+
+const STATUS_RESOLUCAO_META: Record<"revisado" | "descartado", { label: string; badge: string }> = {
+  revisado: { label: "Revisado", badge: "bg-green-100 text-green-700" },
+  descartado: { label: "Descartado (falso positivo)", badge: "bg-gray-100 text-gray-600" },
 };
 
 // Layout circular simples — o grafo é pequeno (só clientes com alerta em
@@ -60,6 +65,8 @@ export function FraudeTab({
   focoInicial?: { nome: string; ts: number } | null;
 }) {
   const [alertas, setAlertas] = useState<AlertaFraude[]>([]);
+  const [historico, setHistorico] = useState<AlertaFraude[]>([]);
+  const [abaAlertas, setAbaAlertas] = useState<"abertos" | "resolvidos">("abertos");
   const [grafo, setGrafo] = useState<GrafoFraude | null>(null);
   const [busca, setBusca] = useState("");
   const [filtroRegra, setFiltroRegra] = useState("");
@@ -69,6 +76,7 @@ export function FraudeTab({
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [explicacao, setExplicacao] = useState<{ titulo: string; alerta: AlertaFraude } | null>(null);
+  const [resolvendo, setResolvendo] = useState<AlertaFraude | null>(null);
 
   async function carregar() {
     setCarregando(true);
@@ -78,10 +86,13 @@ export function FraudeTab({
       // uma corrida onde /grafo pode ler antes de /alertas terminar de
       // gravar (mais visível na primeira carga, com a tabela ainda vazia),
       // mostrando alertas na lista mas "nenhuma identidade cruzada" no grafo.
+      // /alertas/historico é uma leitura independente (nunca roda o motor de
+      // detecção), então pode vir junto com /grafo sem risco de corrida.
       const a = await fraude.alertas();
-      const g = await fraude.grafo();
+      const [g, h] = await Promise.all([fraude.grafo(), fraude.historico()]);
       setAlertas(a);
       setGrafo(g);
+      setHistorico(h);
       setErro(null);
     } catch {
       setErro("Não foi possível carregar os alertas de fraude.");
@@ -115,23 +126,35 @@ export function FraudeTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focoInicial]);
 
-  async function atualizarStatus(id: string, status: "revisado" | "descartado") {
-    await fraude.atualizarAlerta(id, status);
+  async function atualizarStatus(id: string, status: "revisado" | "descartado", nota?: string) {
+    await fraude.atualizarAlerta(id, status, nota);
     setExplicacao(null);
     await carregar();
+  }
+
+  // Marcar como resolvido exige contar o que foi investigado (o popup
+  // abaixo, PopupResolucao) — nunca um clique direto, diferente de
+  // descartar (falso positivo não precisa de investigação registrada).
+  async function confirmarResolucao(nota: string) {
+    if (!resolvendo) return;
+    await atualizarStatus(resolvendo.id, "revisado", nota);
+    setResolvendo(null);
   }
 
   // Ação de baixo atrito pedida junto com o alerta vermelho: bloquear (ou
   // desbloquear) o cliente direto da lista, em um clique + confirmação, e já
   // marca o alerta como revisado — o admin não precisa repetir a ação em
-  // dois lugares.
+  // dois lugares. A própria ação de bloqueio já serve como a nota de
+  // investigação exigida pelo backend.
   async function alternarBloqueio(alertaId: string, cliente: ClienteEvidencia, bloquearAgora: boolean) {
     const pergunta = bloquearAgora
       ? `Bloquear "${cliente.nome}"? Ele não vai conseguir confirmar novas contratações até ser desbloqueado.`
       : `Desbloquear "${cliente.nome}"?`;
     if (!confirm(pergunta)) return;
     await civ.bloquearCliente(cliente.id, bloquearAgora, bloquearAgora ? "Bloqueado a partir de alerta de fraude" : undefined);
-    if (bloquearAgora) await fraude.atualizarAlerta(alertaId, "revisado");
+    if (bloquearAgora) {
+      await fraude.atualizarAlerta(alertaId, "revisado", `Cliente "${cliente.nome}" bloqueado a partir deste alerta.`);
+    }
     await carregar();
   }
 
@@ -141,28 +164,44 @@ export function FraudeTab({
     [grafo]
   );
 
-  // Filtros de regra/confiança/data — aplicados antes da busca por nome, e
-  // compartilhados entre a tabela e o grafo (o grafo só desenha arestas dos
-  // alertas que passam nesses filtros, não a base toda de alertas abertos).
-  const alertasComFiltroBasico = useMemo(() => {
-    return alertas.filter((a) => {
-      if (filtroRegra && a.regra !== filtroRegra) return false;
-      if (filtroConfianca && a.confianca !== filtroConfianca) return false;
-      if (filtroDataInicio && a.criado_em < filtroDataInicio) return false;
-      if (filtroDataFim && a.criado_em > `${filtroDataFim}T23:59:59`) return false;
-      return true;
-    });
-  }, [alertas, filtroRegra, filtroConfianca, filtroDataInicio, filtroDataFim]);
+  // Filtros de regra/confiança/data — aplicados antes da busca por nome. O
+  // grafo só reflete alertas EM ABERTO (é o que /fraude/grafo devolve),
+  // então tem seu próprio filtro independente da aba da tabela (Em
+  // aberto/Resolvidos) — trocar pra "Resolvidos" não deve esvaziar o grafo.
+  function passaFiltroBasico(a: AlertaFraude): boolean {
+    if (filtroRegra && a.regra !== filtroRegra) return false;
+    if (filtroConfianca && a.confianca !== filtroConfianca) return false;
+    if (filtroDataInicio && a.criado_em < filtroDataInicio) return false;
+    if (filtroDataFim && a.criado_em > `${filtroDataFim}T23:59:59`) return false;
+    return true;
+  }
+
+  const abertosComFiltroBasico = useMemo(
+    () => alertas.filter(passaFiltroBasico),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [alertas, filtroRegra, filtroConfianca, filtroDataInicio, filtroDataFim]
+  );
+  const idsAlertasVisiveis = useMemo(
+    () => new Set(abertosComFiltroBasico.map((a) => a.id)),
+    [abertosComFiltroBasico]
+  );
+
+  // A tabela mostra os alertas em aberto ou o histórico de resolvidos,
+  // dependendo da aba escolhida, com os mesmos filtros de regra/confiança/data.
+  const listaBase = abaAlertas === "abertos" ? alertas : historico;
+  const listaComFiltroBasico = useMemo(
+    () => listaBase.filter(passaFiltroBasico),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [listaBase, filtroRegra, filtroConfianca, filtroDataInicio, filtroDataFim]
+  );
 
   // A mesma busca do grafo filtra a tabela de alertas — antes só afetava o
   // grafo, deixando a lista sempre cheia mesmo depois de focar num caso.
   const termoBusca = busca.trim().toLowerCase();
   const alertasFiltrados = useMemo(() => {
-    if (!termoBusca) return alertasComFiltroBasico;
-    return alertasComFiltroBasico.filter((a) => clientesDoAlerta(a).some((c) => c.nome.toLowerCase().includes(termoBusca)));
-  }, [alertasComFiltroBasico, termoBusca]);
-
-  const idsAlertasVisiveis = useMemo(() => new Set(alertasComFiltroBasico.map((a) => a.id)), [alertasComFiltroBasico]);
+    if (!termoBusca) return listaComFiltroBasico;
+    return listaComFiltroBasico.filter((a) => clientesDoAlerta(a).some((c) => c.nome.toLowerCase().includes(termoBusca)));
+  }, [listaComFiltroBasico, termoBusca]);
 
   // A base pode ter milhões de clientes, mas o grafo nunca carrega a base
   // inteira (só quem já tem alerta em aberto) — ainda assim, com muitos
@@ -373,19 +412,44 @@ export function FraudeTab({
       </section>
 
       <section>
-        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <SectionTitle icone={AlertTriangle}>Alertas em aberto</SectionTitle>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <SectionTitle icone={AlertTriangle}>Alertas</SectionTitle>
+            <div className="flex rounded-lg bg-gray-100 p-0.5 text-xs">
+              <button
+                onClick={() => setAbaAlertas("abertos")}
+                className={`rounded-md px-2.5 py-1 font-medium transition ${
+                  abaAlertas === "abertos" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500"
+                }`}
+              >
+                Em aberto ({alertas.length})
+              </button>
+              <button
+                onClick={() => setAbaAlertas("resolvidos")}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition ${
+                  abaAlertas === "resolvidos" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500"
+                }`}
+              >
+                <History className="h-3 w-3" strokeWidth={2} />
+                Resolvidos ({historico.length})
+              </button>
+            </div>
+          </div>
           <span className="text-[11px] text-gray-400">
             {termoBusca || filtroRegra || filtroConfianca || filtroDataInicio || filtroDataFim
-              ? `${alertasFiltrados.length} de ${alertas.length} alertas (filtrado)`
-              : `${alertas.length} alertas · ${alertas.filter((a) => a.confianca === "alta").length} de confiança alta`}
+              ? `${alertasFiltrados.length} de ${listaBase.length} alertas (filtrado)`
+              : abaAlertas === "abertos"
+                ? `${alertas.length} alertas · ${alertas.filter((a) => a.confianca === "alta").length} de confiança alta`
+                : `${historico.length} alertas resolvidos`}
           </span>
         </div>
         {alertasFiltrados.length === 0 ? (
           <p className="text-sm text-gray-400">
             {termoBusca || filtroRegra || filtroConfianca || filtroDataInicio || filtroDataFim
               ? "Nenhum alerta bate com esse filtro."
-              : "Nenhum alerta em aberto."}
+              : abaAlertas === "abertos"
+                ? "Nenhum alerta em aberto."
+                : "Nenhum alerta resolvido ainda."}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
@@ -395,8 +459,17 @@ export function FraudeTab({
                   <th className="px-3 pb-2 pt-3">Confiança</th>
                   <th className="px-3 pb-2 pt-3">Regra</th>
                   <th className="px-3 pb-2 pt-3">Envolvidos</th>
-                  <th className="px-3 pb-2 pt-3">Explicação</th>
-                  <th className="px-3 pb-2 pt-3">Quando</th>
+                  {abaAlertas === "abertos" ? (
+                    <>
+                      <th className="px-3 pb-2 pt-3">Explicação</th>
+                      <th className="px-3 pb-2 pt-3">Quando</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="px-3 pb-2 pt-3">Resolução</th>
+                      <th className="px-3 pb-2 pt-3">Resolvido</th>
+                    </>
+                  )}
                   <th className="px-3 pb-2 pt-3 text-right">Ações</th>
                 </tr>
               </thead>
@@ -412,6 +485,16 @@ export function FraudeTab({
                     <td className="px-3 py-2.5">
                       <div className="flex max-w-[220px] flex-wrap gap-1">
                         {clientesDoAlerta(a).map((c) => {
+                          if (abaAlertas === "resolvidos") {
+                            return (
+                              <span
+                                key={c.id}
+                                className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-600"
+                              >
+                                {c.nome}
+                              </span>
+                            );
+                          }
                           const bloqueado = bloqueadoPorId.get(c.id) || false;
                           return (
                             <button
@@ -434,12 +517,33 @@ export function FraudeTab({
                         })}
                       </div>
                     </td>
-                    <td className="max-w-xs px-3 py-2.5 text-xs text-gray-600">
-                      <p className="line-clamp-2">{a.explicacao}</p>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-400">
-                      {fmtDataHora(a.criado_em)}
-                    </td>
+                    {abaAlertas === "abertos" ? (
+                      <>
+                        <td className="max-w-xs px-3 py-2.5 text-xs text-gray-600">
+                          <p className="line-clamp-2">{a.explicacao}</p>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-400">
+                          {fmtDataHora(a.criado_em)}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="max-w-xs px-3 py-2.5 text-xs text-gray-600">
+                          <span
+                            className={`mb-1 inline-block rounded-full px-2 py-0.5 text-[11px] ${
+                              STATUS_RESOLUCAO_META[a.status as "revisado" | "descartado"]?.badge || ""
+                            }`}
+                          >
+                            {STATUS_RESOLUCAO_META[a.status as "revisado" | "descartado"]?.label || a.status}
+                          </span>
+                          {a.nota_resolucao && <p className="line-clamp-2 text-gray-600">{a.nota_resolucao}</p>}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-400">
+                          {a.resolvido_em ? fmtDataHora(a.resolvido_em) : "—"}
+                          {a.resolvido_por && <span className="block">por {a.resolvido_por}</span>}
+                        </td>
+                      </>
+                    )}
                     <td className="px-3 py-2.5">
                       <div className="flex justify-end gap-1">
                         <button
@@ -456,20 +560,24 @@ export function FraudeTab({
                         >
                           <Info className="h-3.5 w-3.5" strokeWidth={2} />
                         </button>
-                        <button
-                          onClick={() => atualizarStatus(a.id, "revisado")}
-                          title="Marcar como resolvido"
-                          className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-green-600 hover:text-green-600"
-                        >
-                          <Check className="h-3.5 w-3.5" strokeWidth={2} />
-                        </button>
-                        <button
-                          onClick={() => atualizarStatus(a.id, "descartado")}
-                          title="Descartar (falso positivo)"
-                          className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-claro-red hover:text-claro-red"
-                        >
-                          <X className="h-3.5 w-3.5" strokeWidth={2} />
-                        </button>
+                        {abaAlertas === "abertos" && (
+                          <>
+                            <button
+                              onClick={() => setResolvendo(a)}
+                              title="Marcar como resolvido"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-green-600 hover:text-green-600"
+                            >
+                              <Check className="h-3.5 w-3.5" strokeWidth={2} />
+                            </button>
+                            <button
+                              onClick={() => atualizarStatus(a.id, "descartado")}
+                              title="Descartar (falso positivo)"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-claro-red hover:text-claro-red"
+                            >
+                              <X className="h-3.5 w-3.5" strokeWidth={2} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -481,6 +589,83 @@ export function FraudeTab({
       </section>
 
       {explicacao && <PainelExplicacao alerta={explicacao.alerta} onClose={() => setExplicacao(null)} />}
+      {resolvendo && (
+        <PopupResolucao alerta={resolvendo} onConfirmar={confirmarResolucao} onClose={() => setResolvendo(null)} />
+      )}
+    </div>
+  );
+}
+
+// Popup exigido para marcar um alerta como resolvido: registra o que foi
+// investigado antes de tirar o alerta da lista de abertos — evita um clique
+// silencioso sem nenhuma trilha do que de fato foi apurado.
+function PopupResolucao({
+  alerta,
+  onConfirmar,
+  onClose,
+}: {
+  alerta: AlertaFraude;
+  onConfirmar: (nota: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [nota, setNota] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  async function confirmar() {
+    if (!nota.trim()) return;
+    setSalvando(true);
+    try {
+      await onConfirmar(nota.trim());
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 bg-claro-black px-5 py-4 text-white">
+          <h3 className="flex items-center gap-2 font-semibold">
+            <Check className="h-4 w-4 text-green-400" strokeWidth={2} />
+            Marcar alerta como resolvido
+          </h3>
+          <button onClick={onClose} className="text-white/60 hover:text-white">
+            <X className="h-4 w-4" strokeWidth={2} />
+          </button>
+        </div>
+        <div className="space-y-3 p-5">
+          <p className="text-sm text-gray-600">{alerta.explicacao}</p>
+          <label className="block text-xs font-medium text-gray-500">
+            O que foi investigado? (obrigatório)
+            <textarea
+              value={nota}
+              onChange={(e) => setNota(e.target.value)}
+              rows={4}
+              placeholder="Ex.: liguei para o cliente, confirmou que as linhas são dele mesmo, pediu por engano."
+              className="mt-1 w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-800 focus:border-claro-red focus:outline-none"
+            />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-100 bg-claro-gray-light px-5 py-3">
+          <button
+            onClick={onClose}
+            className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={confirmar}
+            disabled={!nota.trim() || salvando}
+            className="flex items-center gap-1.5 rounded-lg bg-claro-red px-3 py-1.5 text-sm font-medium text-white hover:bg-claro-red-dark disabled:opacity-50"
+          >
+            <Check className="h-4 w-4" strokeWidth={2} />
+            {salvando ? "salvando…" : "Confirmar resolução"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

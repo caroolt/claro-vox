@@ -205,6 +205,9 @@ export interface AlertaFraude {
   confianca: ConfiancaFraude;
   status: "aberto" | "revisado" | "descartado";
   criado_em: string;
+  resolvido_em?: string | null;
+  resolvido_por?: string | null;
+  nota_resolucao?: string | null;
 }
 
 export interface GrafoFraudeNo {
