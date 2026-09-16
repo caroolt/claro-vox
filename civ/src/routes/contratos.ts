@@ -3,6 +3,7 @@ import { pool, audit } from "../db";
 import { hashCpf } from "../crypto";
 import { h } from "../asyncHandler";
 import { nomesConferem } from "../identidade";
+import { broadcast } from "../ws";
 
 export const contratosRouter = Router();
 
@@ -144,5 +145,10 @@ async function registrarESeExcedeuLimiteVolumeCpf(clienteId: string, clienteNome
     );
   }
   await audit("civ", "fraude.alerta.gerado", clienteId);
+  // Diferente das Regras B/C (checadas só quando a aba Fraude está aberta,
+  // ou pelo job periódico), a Regra A é avaliada em tempo real no momento
+  // da contratação — vale a pena avisar os painéis conectados na hora, sem
+  // esperar o próximo ciclo do job.
+  broadcast("fraude.alerta.criado", {});
   return true;
 }

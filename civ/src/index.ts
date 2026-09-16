@@ -16,6 +16,7 @@ import { auditoriaRouter } from "./routes/auditoria";
 import { configuracoesRouter } from "./routes/configuracoes";
 import { fraudeRouter } from "./routes/fraude";
 import { verificarTimeoutsAtendente } from "./jobs/timeoutAtendente";
+import { rodarDeteccaoFraudePeriodica } from "./jobs/deteccaoFraude";
 import { initWs } from "./ws";
 import { pool, ensureSchema } from "./db";
 
@@ -67,4 +68,9 @@ server.listen(PORT, async () => {
   // Checa a cada minuto — granularidade suficiente pra um timeout medido em
   // minutos, sem gerar carga desnecessária no banco.
   setInterval(verificarTimeoutsAtendente, 60_000);
+  // Regras B/C (dispositivo/IP e estilo de escrita) não têm um gatilho de
+  // evento óbvio como a Regra A (checada em tempo real na contratação) —
+  // roda periodicamente pra alertas novos aparecerem nos painéis conectados
+  // sem depender de alguém abrir a aba Fraude na hora certa.
+  setInterval(rodarDeteccaoFraudePeriodica, 60_000);
 });

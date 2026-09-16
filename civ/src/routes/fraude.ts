@@ -4,6 +4,7 @@ import { h } from "../asyncHandler";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { extrairPerfilEstilo, similaridadeGeral, similaridadePorFeature, PerfilEstilo } from "../stylometria";
 import { NOME_ANONIMIZADO } from "./clientes";
+import { broadcast } from "../ws";
 
 export const fraudeRouter = Router();
 
@@ -175,7 +176,11 @@ async function detectarRegraC(limiar: number): Promise<AlertaGerado[]> {
 
 // Upsert idempotente: um alerta em aberto com a mesma regra + mesmo
 // conjunto de clientes é atualizado (não duplicado) a cada nova checagem.
-async function upsertAlerta(a: AlertaGerado) {
+// Devolve se um alerta NOVO foi criado (diferente de só atualizar a
+// evidência de um já existente) — usado para decidir quando vale a pena
+// avisar os painéis conectados via WebSocket, sem gerar ruído a cada
+// checagem periódica que não encontrou nada novo.
+async function upsertAlerta(a: AlertaGerado): Promise<boolean> {
   const existente = await pool.query(
     `SELECT id FROM alerta_fraude WHERE regra = $1 AND clientes_ids = $2::uuid[] AND status = 'aberto'`,
     [a.regra, a.clientes_ids]
@@ -186,18 +191,23 @@ async function upsertAlerta(a: AlertaGerado) {
       a.explicacao,
       existente.rows[0].id,
     ]);
-    return;
+    return false;
   }
   await pool.query(
     `INSERT INTO alerta_fraude (regra, clientes_ids, evidencia, explicacao, confianca) VALUES ($1, $2::uuid[], $3, $4, $5)`,
     [a.regra, a.clientes_ids, JSON.stringify(a.evidencia), a.explicacao, a.confianca]
   );
+  return true;
 }
 
-// GET /v1/fraude/alertas — roda as três regras sob demanda, grava/atualiza
-// alerta_fraude (idempotente) e devolve os alertas em aberto, mais
-// confiantes primeiro.
-fraudeRouter.get("/alertas", h(async (_req, res) => {
+// Roda as três regras e grava/atualiza alerta_fraude (idempotente) —
+// reaproveitada tanto pelo GET /alertas (sob demanda, quando o painel de
+// fraude está aberto) quanto pelo job periódico (deteccaoFraude.ts), que
+// garante que alertas novos apareçam em tempo real via WebSocket mesmo que
+// ninguém esteja com a aba de Fraude aberta no momento em que a fraude
+// acontece. Devolve true se algum alerta novo foi criado (e, nesse caso,
+// já avisa os painéis conectados).
+export async function executarDeteccaoFraude(): Promise<boolean> {
   const [limiarA, limiarC] = await Promise.all([
     configValor("limiar_fraude_pre_pago", 3),
     configValor("limiar_similaridade_estilo", 0.85),
@@ -209,9 +219,19 @@ fraudeRouter.get("/alertas", h(async (_req, res) => {
     detectarRegraC(limiarC),
   ]);
 
+  let houveAlertaNovo = false;
   for (const a of [...alertasA, ...alertasB, ...alertasC]) {
-    await upsertAlerta(a);
+    const novo = await upsertAlerta(a);
+    if (novo) houveAlertaNovo = true;
   }
+  if (houveAlertaNovo) broadcast("fraude.alerta.criado", {});
+  return houveAlertaNovo;
+}
+
+// GET /v1/fraude/alertas — roda a detecção sob demanda e devolve os
+// alertas em aberto, mais confiantes primeiro.
+fraudeRouter.get("/alertas", h(async (_req, res) => {
+  await executarDeteccaoFraude();
 
   const result = await pool.query(`
     SELECT id, regra, clientes_ids, evidencia, explicacao, confianca, status, criado_em
@@ -236,6 +256,7 @@ fraudeRouter.put("/alertas/:id", h(async (req, res) => {
   ]);
   if (!result.rows.length) return res.status(404).json({ erro: "alerta não encontrado" });
   await audit(req.usuario!.email, `fraude.alerta.${status}`, req.params.id);
+  broadcast("fraude.alerta.atualizado", { id: req.params.id, status });
   res.json(result.rows[0]);
 }));
 
