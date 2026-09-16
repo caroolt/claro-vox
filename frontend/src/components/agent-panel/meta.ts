@@ -3,13 +3,16 @@ import type { Segment } from "../charts";
 
 // Chaves da paleta de status (STATUS_HEX em ../charts) — repetidas aqui como
 // união de literais para não precisar importar o objeto só pelo tipo.
-type StatusKey = "good" | "warning" | "serious" | "critical" | "neutral";
+type StatusKey = "good" | "warning" | "serious" | "critical" | "neutral" | "info";
 
 // Metadados de exibição por estado de sessão — a cor reflete a urgência
 // operacional (o que precisa da atenção do atendente agora), não é uma
-// paleta categórica solta.
+// paleta categórica solta. Cold Start usa "info" (azul) em vez de
+// "neutral" (cinza) para não ficar visualmente idêntico a Encerrada — são
+// estados opostos (começando vs. já terminado), não deveriam parecer a
+// mesma coisa num gráfico ou badge.
 export const ESTADO_META: Record<string, { label: string; status: StatusKey; badge: string }> = {
-  COLD_START: { label: "Cold Start", status: "neutral", badge: "bg-gray-100 text-gray-600" },
+  COLD_START: { label: "Cold Start", status: "info", badge: "bg-blue-100 text-blue-700" },
   ATIVA: { label: "Ativa", status: "good", badge: "bg-green-100 text-green-700" },
   TRANSBORDO_PENDENTE: { label: "Transbordo pendente", status: "critical", badge: "bg-red-100 text-red-700" },
   EM_ATENDIMENTO_HUMANO: { label: "Com atendente humano", status: "warning", badge: "bg-amber-100 text-amber-800" },
@@ -79,6 +82,15 @@ export function fmtDataHora(iso: string | null | undefined): string {
 export function fmtData(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+export function ehHoje(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  const hoje = new Date();
+  return (
+    d.getFullYear() === hoje.getFullYear() && d.getMonth() === hoje.getMonth() && d.getDate() === hoje.getDate()
+  );
 }
 
 export function fmtRelativo(iso: string | null | undefined): string {
