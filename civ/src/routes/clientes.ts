@@ -137,7 +137,7 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
   if (!clienteRes.rows.length) return res.status(404).json({ erro: "cliente não encontrado" });
   const cliente = clienteRes.rows[0];
 
-  const [acess, sessoesRes, briefingsRes, npsRes, tomRes, msgCount] = await Promise.all([
+  const [acess, sessoesRes, briefingsRes, npsRes, tomRes, msgCount, fraudeRes] = await Promise.all([
     pool.query(
       `SELECT modalidade_libras, leitor_de_tela, linguagem_simplificada
        FROM preferencia_acessibilidade WHERE cliente_id = $1`,
@@ -192,6 +192,16 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
       `SELECT COUNT(*) AS total FROM mensagem m JOIN sessao s ON s.id = m.sessao_id WHERE s.cliente_id = $1`,
       [id]
     ),
+    // Mesmo critério usado na fila de transbordo (handoff.ts) e no motor de
+    // fraude (fraude.ts): alerta em aberto e de confiança alta — indício
+    // forte o bastante pra chamar atenção do atendente aqui no dossiê, sem
+    // repetir os indícios fracos da Regra C que pedem investigação, não alarme.
+    pool.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM alerta_fraude WHERE $1 = ANY(clientes_ids) AND status = 'aberto' AND confianca = 'alta'
+       ) AS possivel_fraude`,
+      [id]
+    ),
   ]);
 
   const tom_emocional: Record<string, number> = {};
@@ -223,6 +233,7 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
       bloqueado: cliente.bloqueado,
       bloqueado_em: cliente.bloqueado_em,
       bloqueado_motivo: cliente.bloqueado_motivo,
+      possivel_fraude: fraudeRes.rows[0]?.possivel_fraude || false,
     },
     acessibilidade:
       acess.rows[0] || { modalidade_libras: false, leitor_de_tela: false, linguagem_simplificada: false },

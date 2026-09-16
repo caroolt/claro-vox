@@ -53,9 +53,11 @@ function nomeParaFoco(alerta: AlertaFraude): string {
 export function FraudeTab({
   onAbrirCliente,
   ultimoEvento,
+  focoInicial,
 }: {
   onAbrirCliente: (id: string) => void;
   ultimoEvento?: WsEvent | null;
+  focoInicial?: { nome: string; ts: number } | null;
 }) {
   const [alertas, setAlertas] = useState<AlertaFraude[]>([]);
   const [grafo, setGrafo] = useState<GrafoFraude | null>(null);
@@ -104,6 +106,14 @@ export function FraudeTab({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ultimoEvento]);
+
+  // Veio da flag "possível fraude" (fila de transbordo, briefing ou dossiê
+  // do cliente) — preenche a busca com o nome já ao chegar na aba, em vez
+  // do atendente ter que digitar de novo o que já apareceu lá.
+  useEffect(() => {
+    if (focoInicial) setBusca(focoInicial.nome);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focoInicial]);
 
   async function atualizarStatus(id: string, status: "revisado" | "descartado") {
     await fraude.atualizarAlerta(id, status);

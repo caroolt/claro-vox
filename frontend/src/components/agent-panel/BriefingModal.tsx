@@ -1,4 +1,4 @@
-import { CheckCircle2, FileText, Hash, Lightbulb, MessageSquareText, Radio, X } from "lucide-react";
+import { CheckCircle2, FileText, Hash, Lightbulb, MessageSquareText, Radio, ShieldAlert, X } from "lucide-react";
 import type { Briefing } from "../../types";
 import { CANAL_META } from "./meta";
 import { TomBadge } from "./ui";
@@ -10,11 +10,13 @@ export function BriefingModal({
   onResponder,
   onEncerrar,
   onClose,
+  onAbrirFraude,
 }: {
   briefing: Briefing;
   onResponder: (b: Briefing) => void;
   onEncerrar: (id: string) => void;
   onClose: () => void;
+  onAbrirFraude: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -40,6 +42,16 @@ export function BriefingModal({
         <div className="space-y-3 p-5">
           <div className="flex flex-wrap items-center gap-2">
             <TomBadge tom={briefing.tom_emocional} />
+            {briefing.possivel_fraude && (
+              <button
+                onClick={onAbrirFraude}
+                title="Ver alerta de fraude na aba Fraude"
+                className="flex items-center gap-1 rounded-full bg-claro-red/10 px-2.5 py-1 text-[11px] font-medium text-claro-red hover:bg-claro-red hover:text-white"
+              >
+                <ShieldAlert className="h-3 w-3" strokeWidth={2.5} />
+                possível fraude
+              </button>
+            )}
             {briefing.protocolo && (
               <span className="flex items-center gap-1 rounded-full bg-claro-gray-light px-2.5 py-1 text-[11px] font-medium text-gray-600">
                 <Hash className="h-3 w-3" strokeWidth={2.5} />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, Headset, Radio, Search, X } from "lucide-react";
+import { ChevronRight, Headset, Radio, Search, ShieldAlert, X } from "lucide-react";
 import { civ } from "../../api";
 import type { Briefing, ClienteAlerta, SessaoResumo } from "../../types";
 import {
@@ -27,6 +27,7 @@ export function OperacaoTab({
   onResponder,
   onAbrirBriefing,
   onAbrirChat,
+  onAbrirFraude,
 }: {
   sessoes: SessaoResumo[];
   fila: Briefing[];
@@ -36,6 +37,7 @@ export function OperacaoTab({
   onResponder: (b: Briefing) => void;
   onAbrirBriefing: (b: Briefing) => void;
   onAbrirChat: (s: { id: string; clienteNome: string | null; canal: string }) => void;
+  onAbrirFraude: (clienteNome?: string | null) => void;
 }) {
   const [filaTab, setFilaTab] = useState<"pendentes" | "todos">("pendentes");
   const [idsPorCpf, setIdsPorCpf] = useState<Set<string> | null>(null);
@@ -234,6 +236,16 @@ export function OperacaoTab({
                     <TomBadge tom={b.tom_emocional} />
                   </div>
                   {b.protocolo && <p className="mt-0.5 text-[11px] text-gray-400">protocolo {b.protocolo}</p>}
+                  {b.possivel_fraude && (
+                    <button
+                      onClick={() => onAbrirFraude(b.cliente_nome)}
+                      title="Ver alerta de fraude na aba Fraude"
+                      className="mt-1.5 flex items-center gap-1 rounded-full bg-claro-red/10 px-2 py-0.5 text-[11px] font-medium text-claro-red hover:bg-claro-red hover:text-white"
+                    >
+                      <ShieldAlert className="h-3 w-3" strokeWidth={2.5} />
+                      possível fraude
+                    </button>
+                  )}
                   <AlertasCliente alerta={b.cliente_id ? alertasPorCliente[b.cliente_id] : undefined} />
                   <button
                     onClick={() => onAbrirBriefing(b)}

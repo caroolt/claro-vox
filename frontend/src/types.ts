@@ -75,6 +75,7 @@ export interface Briefing {
   atendente_id: string | null;
   assumido_em: string | null;
   encerrado_em: string | null;
+  possivel_fraude: boolean;
 }
 
 export interface KnowledgeItem {
@@ -243,6 +244,7 @@ export interface ClienteDetalhe {
     bloqueado: boolean;
     bloqueado_em: string | null;
     bloqueado_motivo: string | null;
+    possivel_fraude: boolean;
   };
   acessibilidade: {
     modalidade_libras: boolean;
