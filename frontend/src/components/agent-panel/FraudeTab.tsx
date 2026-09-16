@@ -60,7 +60,13 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
   async function carregar() {
     setCarregando(true);
     try {
-      const [a, g] = await Promise.all([fraude.alertas(), fraude.grafo()]);
+      // Sequencial de propósito: /alertas roda o motor de regras e grava no
+      // banco; /grafo só lê o que já está gravado. Buscar em paralelo cria
+      // uma corrida onde /grafo pode ler antes de /alertas terminar de
+      // gravar (mais visível na primeira carga, com a tabela ainda vazia),
+      // mostrando alertas na lista mas "nenhuma identidade cruzada" no grafo.
+      const a = await fraude.alertas();
+      const g = await fraude.grafo();
       setAlertas(a);
       setGrafo(g);
       setErro(null);
