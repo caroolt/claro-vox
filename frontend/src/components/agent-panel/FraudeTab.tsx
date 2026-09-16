@@ -60,7 +60,13 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
   async function carregar() {
     setCarregando(true);
     try {
-      const [a, g] = await Promise.all([fraude.alertas(), fraude.grafo()]);
+      // Sequencial de propósito: /alertas roda o motor de regras e grava no
+      // banco; /grafo só lê o que já está gravado. Buscar em paralelo cria
+      // uma corrida onde /grafo pode ler antes de /alertas terminar de
+      // gravar (mais visível na primeira carga, com a tabela ainda vazia),
+      // mostrando alertas na lista mas "nenhuma identidade cruzada" no grafo.
+      const a = await fraude.alertas();
+      const g = await fraude.grafo();
       setAlertas(a);
       setGrafo(g);
       setErro(null);
@@ -101,6 +107,14 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
     [grafo]
   );
 
+  // A mesma busca do grafo filtra a tabela de alertas — antes só afetava o
+  // grafo, deixando a lista sempre cheia mesmo depois de focar num caso.
+  const termoBusca = busca.trim().toLowerCase();
+  const alertasFiltrados = useMemo(() => {
+    if (!termoBusca) return alertas;
+    return alertas.filter((a) => clientesDoAlerta(a).some((c) => c.nome.toLowerCase().includes(termoBusca)));
+  }, [alertas, termoBusca]);
+
   // A base pode ter milhões de clientes, mas o grafo nunca carrega a base
   // inteira (só quem já tem alerta em aberto) — ainda assim, com muitos
   // alertas simultâneos, catar um nó no olho não escala. A busca filtra
@@ -110,10 +124,9 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
   const { nodes, edges } = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
     if (!grafo) return { nodes: [], edges: [] };
 
-    const termo = busca.trim().toLowerCase();
     let idsVisiveis = new Set(grafo.nos.map((n) => n.id));
-    if (termo) {
-      idsVisiveis = new Set(grafo.nos.filter((n) => n.nome.toLowerCase().includes(termo)).map((n) => n.id));
+    if (termoBusca) {
+      idsVisiveis = new Set(grafo.nos.filter((n) => n.nome.toLowerCase().includes(termoBusca)).map((n) => n.id));
       let mudou = true;
       while (mudou) {
         mudou = false;
@@ -173,7 +186,7 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
     }));
 
     return { nodes, edges };
-  }, [grafo, busca]);
+  }, [grafo, termoBusca]);
 
   function onNodeClick(_: unknown, node: Node) {
     if (node.data?.tipo === "cliente") onAbrirCliente(node.id);
@@ -224,6 +237,14 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
             </div>
           ) : (
             <ReactFlow
+              // `fitView` só enquadra a câmera na montagem do componente — como
+              // o layout circular recalcula as posições do zero a cada filtro,
+              // sem forçar uma remontagem aqui os nós filtrados ficam em
+              // coordenadas fora do que a câmera já estava olhando, e a busca
+              // parece não fazer nada. A key (conjunto de nós visíveis) força
+              // o React a remontar o grafo sempre que o filtro muda, reaplicando
+              // o `fitView`.
+              key={nodes.map((n) => n.id).sort().join(",")}
               nodes={nodes}
               edges={edges}
               onNodeClick={onNodeClick}
@@ -239,77 +260,109 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
       </section>
 
       <section>
-        <SectionTitle icone={AlertTriangle}>Alertas em aberto</SectionTitle>
-        <div className="mt-2 space-y-2">
-          {alertas.length === 0 && <p className="text-sm text-gray-400">Nenhum alerta em aberto.</p>}
-          {alertas.map((a) => (
-            <div key={a.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 p-3">
-              <div className="min-w-0 flex-1">
-                <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${CONFIANCA_META[a.confianca].badge}`}>
-                    {CONFIANCA_META[a.confianca].label}
-                  </span>
-                  <span className="text-[11px] text-gray-400">{REGRA_META[a.regra]?.titulo || a.regra}</span>
-                  <span className="text-[11px] text-gray-300">· {fmtDataHora(a.criado_em)}</span>
-                </div>
-                <p className="text-sm text-gray-700">{a.explicacao}</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {clientesDoAlerta(a).map((c) => {
-                    const bloqueado = bloqueadoPorId.get(c.id) || false;
-                    return (
-                      <button
-                        key={c.id}
-                        onClick={() => alternarBloqueio(a.id, c, !bloqueado)}
-                        className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-                          bloqueado
-                            ? "border-gray-300 bg-gray-100 text-gray-500 hover:border-green-600 hover:text-green-600"
-                            : "border-claro-red/30 bg-claro-red-light text-claro-red hover:bg-claro-red hover:text-white"
-                        }`}
-                      >
-                        {bloqueado ? (
-                          <Unlock className="h-3 w-3" strokeWidth={2} />
-                        ) : (
-                          <Lock className="h-3 w-3" strokeWidth={2} />
-                        )}
-                        {bloqueado ? `Desbloquear ${c.nome}` : `Bloquear ${c.nome}`}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  onClick={() => setBusca(nomeParaFoco(a))}
-                  title="Focar no grafo"
-                  className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-claro-red hover:text-claro-red"
-                >
-                  <Search className="h-3.5 w-3.5" strokeWidth={2} />
-                </button>
-                <button
-                  onClick={() => setExplicacao({ titulo: "Por que esse alerta foi gerado", alerta: a })}
-                  title="Ver evidência"
-                  className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-claro-red hover:text-claro-red"
-                >
-                  <Info className="h-3.5 w-3.5" strokeWidth={2} />
-                </button>
-                <button
-                  onClick={() => atualizarStatus(a.id, "revisado")}
-                  title="Marcar como resolvido"
-                  className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-green-600 hover:text-green-600"
-                >
-                  <Check className="h-3.5 w-3.5" strokeWidth={2} />
-                </button>
-                <button
-                  onClick={() => atualizarStatus(a.id, "descartado")}
-                  title="Descartar (falso positivo)"
-                  className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-claro-red hover:text-claro-red"
-                >
-                  <X className="h-3.5 w-3.5" strokeWidth={2} />
-                </button>
-              </div>
-            </div>
-          ))}
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <SectionTitle icone={AlertTriangle}>Alertas em aberto</SectionTitle>
+          <span className="text-[11px] text-gray-400">
+            {termoBusca
+              ? `${alertasFiltrados.length} de ${alertas.length} alertas (filtrado por "${busca.trim()}")`
+              : `${alertas.length} alertas · ${alertas.filter((a) => a.confianca === "alta").length} de confiança alta`}
+          </span>
         </div>
+        {alertasFiltrados.length === 0 ? (
+          <p className="text-sm text-gray-400">
+            {termoBusca ? "Nenhum alerta bate com essa busca." : "Nenhum alerta em aberto."}
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-gray-400">
+                  <th className="px-3 pb-2 pt-3">Confiança</th>
+                  <th className="px-3 pb-2 pt-3">Regra</th>
+                  <th className="px-3 pb-2 pt-3">Envolvidos</th>
+                  <th className="px-3 pb-2 pt-3">Explicação</th>
+                  <th className="px-3 pb-2 pt-3">Quando</th>
+                  <th className="px-3 pb-2 pt-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {alertasFiltrados.map((a) => (
+                  <tr key={a.id} className="align-top hover:bg-claro-gray-light/60">
+                    <td className="whitespace-nowrap px-3 py-2.5">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] ${CONFIANCA_META[a.confianca].badge}`}>
+                        {CONFIANCA_META[a.confianca].label}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-gray-600">{REGRA_META[a.regra]?.titulo || a.regra}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex max-w-[220px] flex-wrap gap-1">
+                        {clientesDoAlerta(a).map((c) => {
+                          const bloqueado = bloqueadoPorId.get(c.id) || false;
+                          return (
+                            <button
+                              key={c.id}
+                              onClick={() => alternarBloqueio(a.id, c, !bloqueado)}
+                              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                                bloqueado
+                                  ? "border-gray-300 bg-gray-100 text-gray-500 hover:border-green-600 hover:text-green-600"
+                                  : "border-claro-red/30 bg-claro-red-light text-claro-red hover:bg-claro-red hover:text-white"
+                              }`}
+                            >
+                              {bloqueado ? (
+                                <Unlock className="h-3 w-3" strokeWidth={2} />
+                              ) : (
+                                <Lock className="h-3 w-3" strokeWidth={2} />
+                              )}
+                              {c.nome}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </td>
+                    <td className="max-w-xs px-3 py-2.5 text-xs text-gray-600">
+                      <p className="line-clamp-2">{a.explicacao}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-[11px] text-gray-400">
+                      {fmtDataHora(a.criado_em)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => setBusca(nomeParaFoco(a))}
+                          title="Focar no grafo"
+                          className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-claro-red hover:text-claro-red"
+                        >
+                          <Search className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                        <button
+                          onClick={() => setExplicacao({ titulo: "Por que esse alerta foi gerado", alerta: a })}
+                          title="Ver evidência"
+                          className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-claro-red hover:text-claro-red"
+                        >
+                          <Info className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                        <button
+                          onClick={() => atualizarStatus(a.id, "revisado")}
+                          title="Marcar como resolvido"
+                          className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-green-600 hover:text-green-600"
+                        >
+                          <Check className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                        <button
+                          onClick={() => atualizarStatus(a.id, "descartado")}
+                          title="Descartar (falso positivo)"
+                          className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-claro-red hover:text-claro-red"
+                        >
+                          <X className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {explicacao && <PainelExplicacao alerta={explicacao.alerta} onClose={() => setExplicacao(null)} />}

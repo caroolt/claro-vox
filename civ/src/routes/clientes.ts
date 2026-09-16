@@ -6,7 +6,10 @@ import { requireAuth, requireRole } from "../middleware/auth";
 
 export const clientesRouter = Router();
 
-const NOME_ANONIMIZADO = "[excluído a pedido do titular]";
+// Marcador de exclusão LGPD (art. 18) — também usado em fraude.ts pra
+// excluir clientes anonimizados do motor de detecção (não faz sentido
+// gerar alerta sobre alguém que já não dá mais pra identificar).
+export const NOME_ANONIMIZADO = "[excluído a pedido do titular]";
 
 // GET /v1/clientes?q=<nome>&cpf=<cpf> — busca para o painel do atendente.
 // `cpf` (11 dígitos) faz match exato pelo hash — nunca guardamos o número
@@ -272,6 +275,14 @@ clientesRouter.delete("/:id", h(async (req, res) => {
   );
   await pool.query(
     `UPDATE briefing SET resumo_jornada = '[anonimizado]' WHERE sessao_id IN (SELECT id FROM sessao WHERE cliente_id = $1)`,
+    [id]
+  );
+  // Descarta qualquer alerta de fraude em aberto que já mencione esse
+  // cliente — não tem mais como investigar ou bloquear alguém que a gente
+  // não sabe mais quem é, manter o alerta aberto só teria custo, nenhum
+  // benefício.
+  await pool.query(
+    `UPDATE alerta_fraude SET status = 'descartado' WHERE $1 = ANY(clientes_ids) AND status = 'aberto'`,
     [id]
   );
   await audit("civ", "lgpd.exclusao", id);

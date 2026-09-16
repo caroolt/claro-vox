@@ -3,6 +3,7 @@ import { pool, audit } from "../db";
 import { h } from "../asyncHandler";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { extrairPerfilEstilo, similaridadeGeral, similaridadePorFeature, PerfilEstilo } from "../stylometria";
+import { NOME_ANONIMIZADO } from "./clientes";
 
 export const fraudeRouter = Router();
 
@@ -37,11 +38,11 @@ async function detectarRegraA(limiar: number): Promise<AlertaGerado[]> {
     `
     SELECT c.cliente_id, cl.nome, COUNT(*) AS total, array_agg(c.protocolo) AS protocolos
     FROM contrato c JOIN cliente cl ON cl.id = c.cliente_id
-    WHERE c.tipo_plano = 'pre-pago' AND c.status = 'confirmado'
+    WHERE c.tipo_plano = 'pre-pago' AND c.status = 'confirmado' AND cl.nome <> $2
     GROUP BY c.cliente_id, cl.nome
     HAVING COUNT(*) > $1
   `,
-    [limiar]
+    [limiar, NOME_ANONIMIZADO]
   );
   return r.rows.map((row) => ({
     regra: "A_volume_cpf" as const,
@@ -58,17 +59,31 @@ async function detectarRegraA(limiar: number): Promise<AlertaGerado[]> {
 }
 
 async function detectarRegraB(): Promise<AlertaGerado[]> {
+  // O JOIN com cliente (em vez de só filtrar por s.cliente_id IS NOT NULL)
+  // tira da contagem quem já foi anonimizado por exclusão LGPD (art. 18) —
+  // não faz sentido gerar ou manter um alerta sobre alguém que a gente não
+  // sabe mais quem é. Não usa cpf_hash IS NOT NULL aqui porque isso também
+  // excluiria clientes em prospecção de verdade (ainda sem CPF, não é o
+  // mesmo caso).
   const [dispositivos, ips] = await Promise.all([
-    pool.query(`
+    pool.query(
+      `
       SELECT s.dispositivo_id AS chave, array_agg(DISTINCT s.cliente_id) AS clientes
-      FROM sessao s WHERE s.dispositivo_id IS NOT NULL AND s.cliente_id IS NOT NULL
+      FROM sessao s JOIN cliente cl ON cl.id = s.cliente_id AND cl.nome <> $1
+      WHERE s.dispositivo_id IS NOT NULL
       GROUP BY s.dispositivo_id HAVING COUNT(DISTINCT s.cliente_id) > 1
-    `),
-    pool.query(`
+    `,
+      [NOME_ANONIMIZADO]
+    ),
+    pool.query(
+      `
       SELECT s.ip_origem AS chave, array_agg(DISTINCT s.cliente_id) AS clientes
-      FROM sessao s WHERE s.ip_origem IS NOT NULL AND s.cliente_id IS NOT NULL
+      FROM sessao s JOIN cliente cl ON cl.id = s.cliente_id AND cl.nome <> $1
+      WHERE s.ip_origem IS NOT NULL
       GROUP BY s.ip_origem HAVING COUNT(DISTINCT s.cliente_id) > 1
-    `),
+    `,
+      [NOME_ANONIMIZADO]
+    ),
   ]);
 
   const clienteIds = new Set<string>();
@@ -116,11 +131,11 @@ async function detectarRegraC(limiar: number): Promise<AlertaGerado[]> {
     `
     SELECT s.cliente_id, cl.nome, array_agg(m.conteudo) AS mensagens
     FROM mensagem m JOIN sessao s ON s.id = m.sessao_id JOIN cliente cl ON cl.id = s.cliente_id
-    WHERE m.remetente = 'cliente' AND s.cliente_id IS NOT NULL
+    WHERE m.remetente = 'cliente' AND s.cliente_id IS NOT NULL AND cl.nome <> $2
     GROUP BY s.cliente_id, cl.nome
     HAVING COUNT(*) >= $1
   `,
-    [MIN_MENSAGENS_ESTILO]
+    [MIN_MENSAGENS_ESTILO, NOME_ANONIMIZADO]
   );
 
   const perfis: { clienteId: string; nome: string; perfil: PerfilEstilo }[] = [];
