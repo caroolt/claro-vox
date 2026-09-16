@@ -80,6 +80,18 @@ coldstartRouter.post("/answer", h(async (req, res) => {
 
   if (draft.etapa === "pergunta_identificador") {
     const identificador = String(resposta).replace(/\D/g, "");
+
+    // Cliente que afirma já ter cadastro precisa informar um CPF válido de
+    // verdade (11 dígitos) — sem isso não dá pra conferir identidade contra
+    // o cadastro (igual à validação de contratos.ts), e um CPF incompleto
+    // não pode simplesmente virar um cadastro novo.
+    if (draft.jaCliente && identificador.length !== 11) {
+      const pergunta = `${draft.nome}, esse CPF não parece válido. Pode confirmar os 11 números do seu CPF?`;
+      const canalIdErro = await getOrCreateCanal(draft.canal);
+      await pool.query(`INSERT INTO mensagem (sessao_id, canal_id, remetente, conteudo) VALUES ($1, $2, 'vox', $3)`, [sessao_id, canalIdErro, pergunta]);
+      return res.json({ sessao_id, estado: "COLD_START", proxima_pergunta: pergunta });
+    }
+
     const tipoCliente = draft.jaCliente ? "ativo" : "prospeccao";
     const cpfHash = draft.jaCliente ? hashCpf(identificador) : null;
     const telefone = draft.jaCliente ? null : identificador;
