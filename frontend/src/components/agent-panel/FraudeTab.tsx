@@ -230,6 +230,14 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
             </div>
           ) : (
             <ReactFlow
+              // `fitView` só enquadra a câmera na montagem do componente — como
+              // o layout circular recalcula as posições do zero a cada filtro,
+              // sem forçar uma remontagem aqui os nós filtrados ficam em
+              // coordenadas fora do que a câmera já estava olhando, e a busca
+              // parece não fazer nada. A key (conjunto de nós visíveis) força
+              // o React a remontar o grafo sempre que o filtro muda, reaplicando
+              // o `fitView`.
+              key={nodes.map((n) => n.id).sort().join(",")}
               nodes={nodes}
               edges={edges}
               onNodeClick={onNodeClick}
