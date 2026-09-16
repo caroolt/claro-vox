@@ -19,7 +19,13 @@ CREATE TABLE IF NOT EXISTS cliente (
   tipo_cliente   TEXT NOT NULL CHECK (tipo_cliente IN ('ativo','prospeccao')),
   consentimento_ts TIMESTAMPTZ,
   consentimento_versao TEXT,
-  data_cadastro  TIMESTAMPTZ NOT NULL DEFAULT now()
+  data_cadastro  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Bloqueio manual pelo admin a partir de um alerta de fraude (aba
+  -- Fraude) — impede novas contratações (ver POST /v1/contratos) sem
+  -- apagar o histórico do cliente, ao contrário da exclusão LGPD.
+  bloqueado        BOOLEAN NOT NULL DEFAULT false,
+  bloqueado_em     TIMESTAMPTZ,
+  bloqueado_motivo TEXT
 );
 
 CREATE TABLE IF NOT EXISTS preferencia_acessibilidade (

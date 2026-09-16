@@ -212,6 +212,7 @@ export interface GrafoFraudeNo {
   // "linha" = uma conta/contrato pré-pago do cliente (Regra A) — nó satélite,
   // não é uma identidade separada.
   tipo: "cliente" | "linha";
+  bloqueado?: boolean;
 }
 
 export interface GrafoFraudeAresta {
@@ -239,6 +240,9 @@ export interface ClienteDetalhe {
     data_cadastro: string;
     consentimento_ts: string | null;
     consentimento_versao: string | null;
+    bloqueado: boolean;
+    bloqueado_em: string | null;
+    bloqueado_motivo: string | null;
   };
   acessibilidade: {
     modalidade_libras: boolean;

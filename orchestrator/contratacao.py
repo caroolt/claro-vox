@@ -158,6 +158,14 @@ async def _finalizar(civ_url: str, sessao_id: str, dados: Dict[str, Any]) -> Res
             motivo_transbordo="CPF já pertence a outro cadastro (contratação de plano)",
         )
 
+    if resp.status_code == 403:
+        return ResultadoEtapa(
+            "Não consigo prosseguir com essa contratação agora. Vou te transferir para um atendente resolver isso.",
+            None,
+            requer_transbordo=True,
+            motivo_transbordo="cadastro bloqueado por suspeita de fraude (contratação de plano)",
+        )
+
     return ResultadoEtapa(
         "Não consegui concluir a contratação agora por um problema técnico. Pode tentar novamente em instantes?",
         None,

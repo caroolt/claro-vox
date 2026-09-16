@@ -49,6 +49,15 @@ contratosRouter.post("/", h(async (req, res) => {
 
   const clienteRes = await pool.query("SELECT * FROM cliente WHERE id = $1", [sessao.cliente_id]);
   const cliente = clienteRes.rows[0];
+
+  // Cliente bloqueado manualmente pelo admin a partir de um alerta de
+  // fraude (aba Fraude) — não consegue confirmar nenhuma contratação nova
+  // até ser desbloqueado.
+  if (cliente.bloqueado) {
+    await audit("orchestrator", "contrato.cliente_bloqueado", sessao.cliente_id);
+    return res.status(403).json({ erro: "cliente_bloqueado", mensagem: "Este cadastro está bloqueado. Procure um atendente humano." });
+  }
+
   const cpfLimpo = String(cpf).replace(/\D/g, "");
   if (cpfLimpo.length !== 11) return res.status(400).json({ erro: "cpf inválido" });
   const cpfHash = hashCpf(cpfLimpo);

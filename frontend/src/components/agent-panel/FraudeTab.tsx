@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactFlow, { Background, Controls, type Edge, type Node } from "reactflow";
 import "reactflow/dist/style.css";
-import { AlertTriangle, Check, Info, Search, ShieldAlert, X } from "lucide-react";
-import { fraude } from "../../api";
+import { AlertTriangle, Check, Info, Lock, Search, ShieldAlert, Unlock, X } from "lucide-react";
+import { civ, fraude } from "../../api";
 import type { AlertaFraude, ConfiancaFraude, GrafoFraude } from "../../types";
 import { SectionTitle } from "./ui";
 import { fmtDataHora } from "./meta";
+
+interface ClienteEvidencia {
+  id: string;
+  nome: string;
+}
 
 const CONFIANCA_META: Record<ConfiancaFraude, { label: string; badge: string }> = {
   alta: { label: "Confiança alta", badge: "bg-red-100 text-red-700" },
@@ -36,10 +41,12 @@ function calcularPosicoes(ids: string[]): Record<string, { x: number; y: number 
 // Nome usado pra pré-preencher a busca quando o atendente clica em "focar no
 // grafo" a partir da lista de alertas — poupa digitar de novo o que já está
 // na explicação.
+function clientesDoAlerta(alerta: AlertaFraude): ClienteEvidencia[] {
+  return (alerta.evidencia.clientes as ClienteEvidencia[] | undefined) || [];
+}
+
 function nomeParaFoco(alerta: AlertaFraude): string {
-  const clientes = alerta.evidencia.clientes as string[] | undefined;
-  if (clientes?.length) return clientes[0];
-  return (alerta.evidencia.cliente_nome as string | undefined) || "";
+  return clientesDoAlerta(alerta)[0]?.nome || "";
 }
 
 export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => void }) {
@@ -74,7 +81,25 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
     await carregar();
   }
 
+  // Ação de baixo atrito pedida junto com o alerta vermelho: bloquear (ou
+  // desbloquear) o cliente direto da lista, em um clique + confirmação, e já
+  // marca o alerta como revisado — o admin não precisa repetir a ação em
+  // dois lugares.
+  async function alternarBloqueio(alertaId: string, cliente: ClienteEvidencia, bloquearAgora: boolean) {
+    const pergunta = bloquearAgora
+      ? `Bloquear "${cliente.nome}"? Ele não vai conseguir confirmar novas contratações até ser desbloqueado.`
+      : `Desbloquear "${cliente.nome}"?`;
+    if (!confirm(pergunta)) return;
+    await civ.bloquearCliente(cliente.id, bloquearAgora, bloquearAgora ? "Bloqueado a partir de alerta de fraude" : undefined);
+    if (bloquearAgora) await fraude.atualizarAlerta(alertaId, "revisado");
+    await carregar();
+  }
+
   const alertaPorId = useMemo(() => new Map(alertas.map((a) => [a.id, a])), [alertas]);
+  const bloqueadoPorId = useMemo(
+    () => new Map((grafo?.nos || []).filter((n) => n.tipo === "cliente").map((n) => [n.id, !!n.bloqueado])),
+    [grafo]
+  );
 
   // A base pode ter milhões de clientes, mas o grafo nunca carrega a base
   // inteira (só quem já tem alerta em aberto) — ainda assim, com muitos
@@ -112,13 +137,14 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
     const nodes: Node[] = nosVisiveis.map((n) => ({
       id: n.id,
       position: posicoes[n.id],
-      data: { label: n.nome, tipo: n.tipo },
+      data: { label: n.tipo === "cliente" && n.bloqueado ? `🔒 ${n.nome}` : n.nome, tipo: n.tipo },
       style:
         n.tipo === "cliente"
           ? {
               borderRadius: 10,
-              border: "2px solid #E4002B",
-              background: "#FEF2F2",
+              border: n.bloqueado ? "2px solid #6b7280" : "2px solid #E4002B",
+              background: n.bloqueado ? "#f3f4f6" : "#FEF2F2",
+              color: n.bloqueado ? "#6b7280" : undefined,
               fontSize: 12,
               padding: 8,
             }
@@ -227,6 +253,29 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
                   <span className="text-[11px] text-gray-300">· {fmtDataHora(a.criado_em)}</span>
                 </div>
                 <p className="text-sm text-gray-700">{a.explicacao}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {clientesDoAlerta(a).map((c) => {
+                    const bloqueado = bloqueadoPorId.get(c.id) || false;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => alternarBloqueio(a.id, c, !bloqueado)}
+                        className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                          bloqueado
+                            ? "border-gray-300 bg-gray-100 text-gray-500 hover:border-green-600 hover:text-green-600"
+                            : "border-claro-red/30 bg-claro-red-light text-claro-red hover:bg-claro-red hover:text-white"
+                        }`}
+                      >
+                        {bloqueado ? (
+                          <Unlock className="h-3 w-3" strokeWidth={2} />
+                        ) : (
+                          <Lock className="h-3 w-3" strokeWidth={2} />
+                        )}
+                        {bloqueado ? `Desbloquear ${c.nome}` : `Bloquear ${c.nome}`}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <button
@@ -245,7 +294,7 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
                 </button>
                 <button
                   onClick={() => atualizarStatus(a.id, "revisado")}
-                  title="Marcar como revisado"
+                  title="Marcar como resolvido"
                   className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-green-600 hover:text-green-600"
                 >
                   <Check className="h-3.5 w-3.5" strokeWidth={2} />
@@ -299,7 +348,11 @@ function PainelExplicacao({ alerta, onClose }: { alerta: AlertaFraude; onClose: 
                   <div key={k} className="flex justify-between gap-3">
                     <dt className="text-gray-400">{k}</dt>
                     <dd className="text-right font-medium text-gray-700">
-                      {Array.isArray(v) ? v.join(", ") : String(v)}
+                      {k === "clientes"
+                        ? (v as ClienteEvidencia[]).map((c) => c.nome).join(", ")
+                        : Array.isArray(v)
+                          ? v.join(", ")
+                          : String(v)}
                     </dd>
                   </div>
                 ))}

@@ -47,7 +47,7 @@ async function detectarRegraA(limiar: number): Promise<AlertaGerado[]> {
     regra: "A_volume_cpf" as const,
     clientes_ids: [row.cliente_id],
     evidencia: {
-      cliente_nome: row.nome,
+      clientes: [{ id: row.cliente_id, nome: row.nome }],
       total_linhas_pre_pago: Number(row.total),
       protocolos: row.protocolos,
       limiar,
@@ -82,23 +82,23 @@ async function detectarRegraB(): Promise<AlertaGerado[]> {
   const alertas: AlertaGerado[] = [];
   for (const row of dispositivos.rows) {
     const ids = [...row.clientes].sort();
-    const nomesClientes = ids.map((id) => nomes.get(id) || id);
+    const clientes = ids.map((id) => ({ id, nome: nomes.get(id) || id }));
     alertas.push({
       regra: "B_dispositivo_ip",
       clientes_ids: ids,
-      evidencia: { tipo: "dispositivo_id", valor: row.chave, clientes: nomesClientes },
-      explicacao: `O mesmo dispositivo foi usado por ${ids.length} CPFs diferentes: ${nomesClientes.join(", ")}.`,
+      evidencia: { tipo: "dispositivo_id", valor: row.chave, clientes },
+      explicacao: `O mesmo dispositivo foi usado por ${ids.length} CPFs diferentes: ${clientes.map((c) => c.nome).join(", ")}.`,
       confianca: "alta",
     });
   }
   for (const row of ips.rows) {
     const ids = [...row.clientes].sort();
-    const nomesClientes = ids.map((id) => nomes.get(id) || id);
+    const clientes = ids.map((id) => ({ id, nome: nomes.get(id) || id }));
     alertas.push({
       regra: "B_dispositivo_ip",
       clientes_ids: ids,
-      evidencia: { tipo: "ip_origem", valor: row.chave, clientes: nomesClientes },
-      explicacao: `A mesma origem de rede (IP) foi usada por ${ids.length} CPFs diferentes: ${nomesClientes.join(", ")}.`,
+      evidencia: { tipo: "ip_origem", valor: row.chave, clientes },
+      explicacao: `A mesma origem de rede (IP) foi usada por ${ids.length} CPFs diferentes: ${clientes.map((c) => c.nome).join(", ")}.`,
       confianca: "alta",
     });
   }
@@ -137,12 +137,14 @@ async function detectarRegraC(limiar: number): Promise<AlertaGerado[]> {
       const similaridade = similaridadeGeral(a.perfil, b.perfil);
       if (similaridade < limiar) continue;
       const porFeature = similaridadePorFeature(a.perfil, b.perfil);
+      const nomePorId = new Map([[a.clienteId, a.nome], [b.clienteId, b.nome]]);
       const ids = [a.clienteId, b.clienteId].sort();
+      const clientes = ids.map((id) => ({ id, nome: nomePorId.get(id)! }));
       alertas.push({
         regra: "C_estilo_escrita",
         clientes_ids: ids,
         evidencia: {
-          clientes: [a.nome, b.nome],
+          clientes,
           similaridade_geral: Number(similaridade.toFixed(2)),
           por_feature: Object.fromEntries(
             Object.entries(porFeature).map(([k, v]) => [k, Number((v as number).toFixed(2))])
@@ -226,6 +228,7 @@ interface NoGrafo {
   id: string;
   nome: string;
   tipo: "cliente" | "linha";
+  bloqueado?: boolean;
 }
 
 interface ArestaGrafo {
@@ -252,15 +255,22 @@ fraudeRouter.get("/grafo", h(async (_req, res) => {
   alertasRes.rows.forEach((a) => a.clientes_ids.forEach((id: string) => clienteIds.add(id)));
 
   const nomes = new Map<string, string>();
+  const bloqueados = new Set<string>();
   if (clienteIds.size) {
-    const nomesRes = await pool.query(`SELECT id, nome FROM cliente WHERE id = ANY($1::uuid[])`, [[...clienteIds]]);
-    nomesRes.rows.forEach((r) => nomes.set(r.id, r.nome));
+    const nomesRes = await pool.query(`SELECT id, nome, bloqueado FROM cliente WHERE id = ANY($1::uuid[])`, [
+      [...clienteIds],
+    ]);
+    nomesRes.rows.forEach((r) => {
+      nomes.set(r.id, r.nome);
+      if (r.bloqueado) bloqueados.add(r.id);
+    });
   }
 
   const nos: NoGrafo[] = [...clienteIds].map((id) => ({
     id,
     nome: nomes.get(id) || "cliente removido",
     tipo: "cliente",
+    bloqueado: bloqueados.has(id),
   }));
   const arestas: ArestaGrafo[] = [];
 
