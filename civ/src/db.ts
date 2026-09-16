@@ -93,6 +93,12 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE cliente ADD COLUMN IF NOT EXISTS bloqueado_em TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE cliente ADD COLUMN IF NOT EXISTS bloqueado_motivo TEXT`);
 
+  // Trilha de quem revisou um alerta de fraude, quando, e (para 'revisado')
+  // o resumo da investigação — exigido no momento de marcar como revisado.
+  await pool.query(`ALTER TABLE alerta_fraude ADD COLUMN IF NOT EXISTS resolvido_em TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE alerta_fraude ADD COLUMN IF NOT EXISTS resolvido_por TEXT`);
+  await pool.query(`ALTER TABLE alerta_fraude ADD COLUMN IF NOT EXISTS nota_resolucao TEXT`);
+
   await pool.query(`
     INSERT INTO configuracao (chave, valor, descricao) VALUES
       ('meta_transbordo_pct', 25, 'Meta (%) da taxa de transbordo. Acima disso, a Visão geral destaca o indicador'),

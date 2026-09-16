@@ -58,7 +58,11 @@ handoffRouter.get("/", requireAuth, h(async (req, res) => {
   const result = await pool.query(`
     SELECT b.*, s.estado AS sessao_estado, s.canal_origem_id, s.protocolo,
            cl.id AS cliente_id, cl.nome AS cliente_nome,
-           ca.nome AS canal, h.atendente_id, h.assumido_em, h.encerrado_em
+           ca.nome AS canal, h.atendente_id, h.assumido_em, h.encerrado_em,
+           EXISTS (
+             SELECT 1 FROM alerta_fraude af
+             WHERE cl.id = ANY(af.clientes_ids) AND af.status = 'aberto' AND af.confianca = 'alta'
+           ) AS possivel_fraude
     FROM briefing b
     JOIN sessao s ON s.id = b.sessao_id
     LEFT JOIN cliente cl ON cl.id = s.cliente_id
@@ -102,7 +106,11 @@ handoffRouter.post("/:id/encerrar", requireAuth, h(async (req, res) => {
 async function getBriefingCompleto(id: string) {
   const result = await pool.query(`
     SELECT b.*, s.estado AS sessao_estado, s.id AS sessao_id, s.protocolo, cl.nome AS cliente_nome, cl.tipo_cliente,
-           h.atendente_id, h.assumido_em, h.encerrado_em
+           h.atendente_id, h.assumido_em, h.encerrado_em,
+           EXISTS (
+             SELECT 1 FROM alerta_fraude af
+             WHERE cl.id = ANY(af.clientes_ids) AND af.status = 'aberto' AND af.confianca = 'alta'
+           ) AS possivel_fraude
     FROM briefing b
     JOIN sessao s ON s.id = b.sessao_id
     LEFT JOIN cliente cl ON cl.id = s.cliente_id

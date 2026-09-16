@@ -75,6 +75,7 @@ export interface Briefing {
   atendente_id: string | null;
   assumido_em: string | null;
   encerrado_em: string | null;
+  possivel_fraude: boolean;
 }
 
 export interface KnowledgeItem {
@@ -204,6 +205,9 @@ export interface AlertaFraude {
   confianca: ConfiancaFraude;
   status: "aberto" | "revisado" | "descartado";
   criado_em: string;
+  resolvido_em?: string | null;
+  resolvido_por?: string | null;
+  nota_resolucao?: string | null;
 }
 
 export interface GrafoFraudeNo {
@@ -243,6 +247,7 @@ export interface ClienteDetalhe {
     bloqueado: boolean;
     bloqueado_em: string | null;
     bloqueado_motivo: string | null;
+    possivel_fraude: boolean;
   };
   acessibilidade: {
     modalidade_libras: boolean;

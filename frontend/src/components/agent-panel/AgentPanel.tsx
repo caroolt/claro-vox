@@ -58,6 +58,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
   const [clienteDrawerId, setClienteDrawerId] = useState<string | null>(null);
   const [briefingAberto, setBriefingAberto] = useState<Briefing | null>(null);
   const [chatSessao, setChatSessao] = useState<ChatSessao | null>(null);
+  const [focoFraude, setFocoFraude] = useState<{ nome: string; ts: number } | null>(null);
 
   const { ultimoEvento, conectado } = useBriefingSocket();
 
@@ -135,6 +136,14 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
   function irParaEstado(estado: string) {
     setFiltros({ ...FILTROS_VAZIOS, estado });
     setAba("operacao");
+  }
+
+  // Atalho da flag "possível fraude" (fila de transbordo, briefing, dossiê
+  // do cliente): leva direto pra aba Fraude já com a busca preenchida pelo
+  // nome do cliente, em vez de precisar procurar manualmente no grafo.
+  function abrirFraude(clienteNome?: string | null) {
+    setAba("fraude");
+    if (clienteNome) setFocoFraude({ nome: clienteNome, ts: Date.now() });
   }
 
   async function exportarCsv() {
@@ -218,6 +227,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
             onResponder={responder}
             onAbrirBriefing={setBriefingAberto}
             onAbrirChat={setChatSessao}
+            onAbrirFraude={abrirFraude}
           />
         )}
 
@@ -245,7 +255,9 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
 
           {aba === "atendentes" && <AtendentesTab usuarioLogadoId={usuario.id} />}
 
-          {aba === "fraude" && <FraudeTab onAbrirCliente={setClienteDrawerId} ultimoEvento={ultimoEvento} />}
+          {aba === "fraude" && (
+            <FraudeTab onAbrirCliente={setClienteDrawerId} ultimoEvento={ultimoEvento} focoInicial={focoFraude} />
+          )}
 
           {aba === "configuracoes" && <ConfiguracoesTab />}
         </div>
@@ -257,6 +269,10 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
           onResponder={responder}
           onEncerrar={encerrar}
           onClose={() => setBriefingAberto(null)}
+          onAbrirFraude={() => {
+            setBriefingAberto(null);
+            abrirFraude(briefingAberto.cliente_nome);
+          }}
         />
       )}
 
@@ -267,6 +283,10 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
           onClose={() => setClienteDrawerId(null)}
           onAbrirChat={setChatSessao}
           onExcluido={carregarTudo}
+          onAbrirFraude={(nome) => {
+            setClienteDrawerId(null);
+            abrirFraude(nome);
+          }}
         />
       )}
 

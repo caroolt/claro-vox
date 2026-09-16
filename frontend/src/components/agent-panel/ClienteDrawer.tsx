@@ -7,6 +7,7 @@ import {
   History,
   IdCard,
   MessageCircle,
+  ShieldAlert,
   Star,
   Trash2,
   X,
@@ -26,12 +27,14 @@ export function ClienteDrawer({
   onClose,
   onAbrirChat,
   onExcluido,
+  onAbrirFraude,
 }: {
   clienteId: string;
   ultimoEvento: WsEvent | null;
   onClose: () => void;
   onAbrirChat: (s: { id: string; clienteNome: string | null; canal: string }) => void;
   onExcluido: () => void;
+  onAbrirFraude: (clienteNome?: string | null) => void;
 }) {
   const [dados, setDados] = useState<ClienteDetalhe | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -98,6 +101,16 @@ export function ClienteDrawer({
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-gray-900">{c?.nome || "Cliente"}</h3>
               <TipoClienteBadge tipo={c?.tipo_cliente} />
+              {c?.possivel_fraude && (
+                <button
+                  onClick={() => onAbrirFraude(c.nome)}
+                  title="Ver alerta de fraude na aba Fraude"
+                  className="flex items-center gap-1 rounded-full bg-claro-red/10 px-2 py-0.5 text-[11px] font-medium text-claro-red hover:bg-claro-red hover:text-white"
+                >
+                  <ShieldAlert className="h-3 w-3" strokeWidth={2.5} />
+                  possível fraude
+                </button>
+              )}
             </div>
             {c && (
               <p className="text-[11px] text-gray-400">
