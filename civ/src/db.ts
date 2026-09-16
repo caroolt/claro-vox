@@ -1,7 +1,12 @@
 import { Pool } from "pg";
 
+// DATABASE_SSL=true liga TLS sem verificar a cadeia de certificado — modo
+// exigido por bancos gerenciados externos (ex.: Supabase) que não expõem o
+// certificado raiz para validação. Fica desligado por padrão (Postgres
+// local/docker-compose não usa TLS).
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL || "postgres://clarovox:clarovox_dev_pw@localhost:5432/claro_vox",
+  ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : undefined,
 });
 
 // O schema.sql só é aplicado pelo Postgres em volume novo (script de
