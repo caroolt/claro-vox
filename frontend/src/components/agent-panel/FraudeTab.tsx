@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactFlow, { Background, Controls, type Edge, type Node } from "reactflow";
 import "reactflow/dist/style.css";
-import { AlertTriangle, Check, Info, ShieldAlert, X } from "lucide-react";
+import { AlertTriangle, Check, Info, Search, ShieldAlert, X } from "lucide-react";
 import { fraude } from "../../api";
 import type { AlertaFraude, ConfiancaFraude, GrafoFraude } from "../../types";
 import { SectionTitle } from "./ui";
@@ -13,15 +13,15 @@ const CONFIANCA_META: Record<ConfiancaFraude, { label: string; badge: string }> 
   baixa: { label: "Confiança baixa", badge: "bg-gray-100 text-gray-600" },
 };
 
-const REGRA_META: Record<string, string> = {
-  A_volume_cpf: "Volume de linhas no mesmo CPF",
-  B_dispositivo_ip: "Dispositivo/IP compartilhado",
-  C_estilo_escrita: "Estilo de escrita semelhante",
+const REGRA_META: Record<string, { titulo: string; rotuloAresta: string }> = {
+  A_volume_cpf: { titulo: "Volume de linhas no mesmo CPF", rotuloAresta: "linha pré-paga" },
+  B_dispositivo_ip: { titulo: "Dispositivo/IP compartilhado", rotuloAresta: "dispositivo/IP" },
+  C_estilo_escrita: { titulo: "Estilo de escrita semelhante", rotuloAresta: "estilo semelhante" },
 };
 
-// Layout circular simples — o grafo é pequeno (só clientes envolvidos em
-// alertas em aberto, nunca a base inteira), então não precisa de um
-// algoritmo de layout de força; um círculo já deixa os nós legíveis.
+// Layout circular simples — o grafo é pequeno (só clientes com alerta em
+// aberto, nunca a base inteira), então não precisa de um algoritmo de
+// layout de força; um círculo já deixa os nós legíveis.
 function calcularPosicoes(ids: string[]): Record<string, { x: number; y: number }> {
   const raio = Math.max(140, ids.length * 30);
   const centro = raio + 60;
@@ -33,9 +33,19 @@ function calcularPosicoes(ids: string[]): Record<string, { x: number; y: number 
   return posicoes;
 }
 
+// Nome usado pra pré-preencher a busca quando o atendente clica em "focar no
+// grafo" a partir da lista de alertas — poupa digitar de novo o que já está
+// na explicação.
+function nomeParaFoco(alerta: AlertaFraude): string {
+  const clientes = alerta.evidencia.clientes as string[] | undefined;
+  if (clientes?.length) return clientes[0];
+  return (alerta.evidencia.cliente_nome as string | undefined) || "";
+}
+
 export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => void }) {
   const [alertas, setAlertas] = useState<AlertaFraude[]>([]);
   const [grafo, setGrafo] = useState<GrafoFraude | null>(null);
+  const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [explicacao, setExplicacao] = useState<{ titulo: string; alerta: AlertaFraude } | null>(null);
@@ -66,40 +76,82 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
 
   const alertaPorId = useMemo(() => new Map(alertas.map((a) => [a.id, a])), [alertas]);
 
+  // A base pode ter milhões de clientes, mas o grafo nunca carrega a base
+  // inteira (só quem já tem alerta em aberto) — ainda assim, com muitos
+  // alertas simultâneos, catar um nó no olho não escala. A busca filtra
+  // pelo nome e mantém os nós conectados a ele (ex.: buscar "Marcos" traz
+  // junto as linhas pré-pagas dele), pra usar o grafo como zoom de uma
+  // investigação específica, não como ferramenta de garimpo visual.
   const { nodes, edges } = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
     if (!grafo) return { nodes: [], edges: [] };
-    const posicoes = calcularPosicoes(grafo.nos.map((n) => n.id));
-    const idsComAlertaVolume = new Set(grafo.alertas_volume.flatMap((a) => a.clientes_ids));
 
-    const nodes: Node[] = grafo.nos.map((n) => ({
+    const termo = busca.trim().toLowerCase();
+    let idsVisiveis = new Set(grafo.nos.map((n) => n.id));
+    if (termo) {
+      idsVisiveis = new Set(grafo.nos.filter((n) => n.nome.toLowerCase().includes(termo)).map((n) => n.id));
+      let mudou = true;
+      while (mudou) {
+        mudou = false;
+        for (const a of grafo.arestas) {
+          if (idsVisiveis.has(a.origem) && !idsVisiveis.has(a.destino)) {
+            idsVisiveis.add(a.destino);
+            mudou = true;
+          }
+          if (idsVisiveis.has(a.destino) && !idsVisiveis.has(a.origem)) {
+            idsVisiveis.add(a.origem);
+            mudou = true;
+          }
+        }
+      }
+    }
+
+    const nosVisiveis = grafo.nos.filter((n) => idsVisiveis.has(n.id));
+    const arestasVisiveis = grafo.arestas.filter((a) => idsVisiveis.has(a.origem) && idsVisiveis.has(a.destino));
+    const posicoes = calcularPosicoes(nosVisiveis.map((n) => n.id));
+
+    const nodes: Node[] = nosVisiveis.map((n) => ({
       id: n.id,
       position: posicoes[n.id],
-      data: { label: n.nome },
-      style: {
-        borderRadius: 10,
-        border: idsComAlertaVolume.has(n.id) ? "2px solid #E4002B" : "1px solid #d1d5db",
-        background: idsComAlertaVolume.has(n.id) ? "#FEF2F2" : "#fff",
-        fontSize: 12,
-        padding: 8,
-      },
+      data: { label: n.nome, tipo: n.tipo },
+      style:
+        n.tipo === "cliente"
+          ? {
+              borderRadius: 10,
+              border: "2px solid #E4002B",
+              background: "#FEF2F2",
+              fontSize: 12,
+              padding: 8,
+            }
+          : {
+              borderRadius: 8,
+              border: "1px dashed #9ca3af",
+              background: "#f9fafb",
+              color: "#6b7280",
+              fontSize: 11,
+              padding: 6,
+            },
     }));
 
-    const edges: Edge[] = grafo.arestas.map((a) => ({
+    const edges: Edge[] = arestasVisiveis.map((a) => ({
       id: a.id,
       source: a.origem,
       target: a.destino,
       data: { alerta_id: a.alerta_id },
-      label: a.regra === "B_dispositivo_ip" ? "dispositivo/IP" : "estilo semelhante",
+      label: REGRA_META[a.regra]?.rotuloAresta || a.regra,
       animated: a.confianca === "alta",
       style: {
-        stroke: a.confianca === "alta" ? "#E4002B" : "#9ca3af",
+        stroke: a.regra === "A_volume_cpf" ? "#9ca3af" : a.confianca === "alta" ? "#E4002B" : "#9ca3af",
         strokeDasharray: a.regra === "C_estilo_escrita" ? "5 4" : undefined,
       },
       labelStyle: { fontSize: 10, fill: "#6b7280" },
     }));
 
     return { nodes, edges };
-  }, [grafo]);
+  }, [grafo, busca]);
+
+  function onNodeClick(_: unknown, node: Node) {
+    if (node.data?.tipo === "cliente") onAbrirCliente(node.id);
+  }
 
   function onEdgeClick(_: unknown, edge: Edge) {
     const alertaId = String(edge.data?.alerta_id || "");
@@ -114,21 +166,41 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
       {erro && <p className="text-sm text-claro-red">{erro}</p>}
 
       <section>
-        <SectionTitle icone={ShieldAlert}>Grafo de identidades cruzadas</SectionTitle>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <SectionTitle icone={ShieldAlert}>Grafo de identidades cruzadas</SectionTitle>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" strokeWidth={2} />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar cliente ou linha no grafo…"
+              className="w-64 rounded-lg border border-gray-300 py-1.5 pl-8 pr-7 text-xs focus:border-claro-red focus:outline-none"
+            />
+            {busca && (
+              <button
+                onClick={() => setBusca("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
+            )}
+          </div>
+        </div>
         <p className="mb-2 text-xs text-gray-400">
-          Clique num cliente para abrir o dossiê, ou numa ligação para ver a evidência por trás do alerta (linha
-          contínua = dispositivo/IP compartilhado; tracejada = estilo de escrita semelhante, indício fraco).
+          Clique num cliente para abrir o dossiê, ou numa ligação para ver a evidência por trás do alerta (linhas
+          pré-pagas em cinza tracejado; dispositivo/IP em vermelho; estilo de escrita semelhante tracejado, indício
+          fraco). Com muitos alertas abertos, use a busca em vez de procurar visualmente.
         </p>
         <div className="h-[420px] rounded-xl border border-gray-200 bg-white">
           {nodes.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-gray-400">
-              Nenhuma identidade cruzada em aberto no momento.
+              {busca ? "Nenhum resultado para essa busca." : "Nenhuma identidade cruzada em aberto no momento."}
             </div>
           ) : (
             <ReactFlow
               nodes={nodes}
               edges={edges}
-              onNodeClick={(_, node) => onAbrirCliente(node.id)}
+              onNodeClick={onNodeClick}
               onEdgeClick={onEdgeClick}
               fitView
               proOptions={{ hideAttribution: true }}
@@ -151,12 +223,19 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
                   <span className={`rounded-full px-2 py-0.5 text-[11px] ${CONFIANCA_META[a.confianca].badge}`}>
                     {CONFIANCA_META[a.confianca].label}
                   </span>
-                  <span className="text-[11px] text-gray-400">{REGRA_META[a.regra] || a.regra}</span>
+                  <span className="text-[11px] text-gray-400">{REGRA_META[a.regra]?.titulo || a.regra}</span>
                   <span className="text-[11px] text-gray-300">· {fmtDataHora(a.criado_em)}</span>
                 </div>
                 <p className="text-sm text-gray-700">{a.explicacao}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={() => setBusca(nomeParaFoco(a))}
+                  title="Focar no grafo"
+                  className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:border-claro-red hover:text-claro-red"
+                >
+                  <Search className="h-3.5 w-3.5" strokeWidth={2} />
+                </button>
                 <button
                   onClick={() => setExplicacao({ titulo: "Por que esse alerta foi gerado", alerta: a })}
                   title="Ver evidência"
@@ -190,7 +269,7 @@ export function FraudeTab({ onAbrirCliente }: { onAbrirCliente: (id: string) => 
 }
 
 // Painel de explicação (camada de XAI): decompõe a evidência bruta por trás
-// do alerta — nunca só um veredito. Para a Regra C, mostra a similaridade
+// do alerta, nunca só um veredito. Para a Regra C, mostra a similaridade
 // por feature, não só o número final.
 function PainelExplicacao({ alerta, onClose }: { alerta: AlertaFraude; onClose: () => void }) {
   const porFeature = alerta.evidencia.por_feature as Record<string, number> | undefined;
