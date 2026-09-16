@@ -1,5 +1,5 @@
-import { civ } from "../../api";
-import type { Briefing, Metrics, SessaoResumo, Transcript } from "../../types";
+import { civ, fraude } from "../../api";
+import type { AlertaFraude, Briefing, Metrics, SessaoResumo, Transcript } from "../../types";
 import { CANAL_META, ESTADO_META, fmtDataHora, TOM_META } from "./meta";
 
 // ---------------------------------------------------------------------------
@@ -73,6 +73,19 @@ function linhaBriefing(b: Briefing) {
   };
 }
 
+function linhaAlertaFraude(a: AlertaFraude) {
+  const envolvidos = (a.evidencia.clientes as { id: string; nome: string }[] | undefined) || [];
+  return {
+    alerta_id: a.id,
+    regra: a.regra,
+    confianca: a.confianca,
+    status: a.status,
+    envolvidos: envolvidos.map((c) => c.nome).join(", "),
+    explicacao: a.explicacao,
+    criado_em: a.criado_em,
+  };
+}
+
 function linhasMetricas(m: Metrics): Record<string, unknown>[] {
   const linhas: { indicador: string; valor: unknown }[] = [
     { indicador: "taxa_transbordo_pct", valor: m.taxa_transbordo_pct },
@@ -128,6 +141,16 @@ export async function exportarBriefingZip(dados: {
   }
 
   if (dados.metrics) zip.file("metricas.csv", comBom(linhasParaCsv(linhasMetricas(dados.metrics))));
+
+  // Alertas de fraude — exclusivo do admin no backend (mesmo RBAC da aba
+  // Fraude); se quem exportou for atendente, a chamada volta 403 e o
+  // arquivo simplesmente não entra no zip, sem quebrar o resto da exportação.
+  try {
+    const alertas = await fraude.alertas();
+    zip.file("alertas-fraude.csv", comBom(linhasParaCsv(alertas.map(linhaAlertaFraude))));
+  } catch {
+    // sem permissão (atendente) ou motor de fraude indisponível — ignora.
+  }
 
   const blob = await zip.generateAsync({ type: "blob" });
   baixarBlob(blob, `vox-briefing-${carimboArquivo()}.zip`);
