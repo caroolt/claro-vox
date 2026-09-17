@@ -93,7 +93,13 @@ async function detectarRegraA(limiar: number): Promise<ResultadoRegra> {
   const chavesAvaliadas = new Set<string>();
   for (const row of r.rows) {
     chavesAvaliadas.add(chaveClientes([row.cliente_id]));
-    if (Number(row.total) <= limiar) continue;
+    // >= (não >) porque a checagem em tempo real (routes/contratos.ts,
+    // registrarESeExcedeuLimiteVolumeCpf) recusa toda contratação que levaria
+    // o CPF a mais de `limiar` linhas confirmadas — na prática o total nunca
+    // ultrapassa o limiar, só o atinge. Usar `> limiar` aqui nunca bateria, e
+    // pior: fazia o fechamento automático de obsoletos derrubar, na rodada
+    // seguinte, todo alerta criado por aquele caminho em tempo real.
+    if (Number(row.total) < limiar) continue;
     gerados.push({
       regra: "A_volume_cpf",
       clientes_ids: [row.cliente_id],
@@ -103,7 +109,7 @@ async function detectarRegraA(limiar: number): Promise<ResultadoRegra> {
         protocolos: row.protocolos,
         limiar,
       },
-      explicacao: `${row.nome} tem ${row.total} linhas pré-pagas confirmadas no próprio CPF, acima do limite configurado de ${limiar}.`,
+      explicacao: `${row.nome} tem ${row.total} linhas pré-pagas confirmadas no próprio CPF, no limite ou acima do limite configurado de ${limiar}.`,
       confianca: "alta",
     });
   }
