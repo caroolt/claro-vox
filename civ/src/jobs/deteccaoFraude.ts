@@ -1,11 +1,10 @@
-import { executarDeteccaoFraude } from "../routes/fraude";
+import { executarDeteccaoFraude } from "../fraudeDeteccao";
 
-// Roda periodicamente (ver setInterval em index.ts): sem isso, as Regras
-// B e C só eram avaliadas quando alguém tinha a aba Fraude aberta (GET
-// /fraude/alertas), então um alerta novo só aparecia da próxima vez que o
-// admin abrisse/recarregasse a aba — não em tempo real. A Regra A continua
-// checada em tempo real de verdade no momento da contratação (ver
-// contratos.ts), esse job cobre as outras duas.
+// Roda periodicamente (ver setInterval em index.ts) — único disparador do
+// motor de detecção (GET /v1/fraude/alertas virou leitura pura, não roda
+// mais a detecção a cada abertura da aba). A Regra A continua checada em
+// tempo real de verdade no momento da contratação (ver contratos.ts), esse
+// job cobre as Regras B e C (e a reconciliação/agrupamento em casos).
 export async function rodarDeteccaoFraudePeriodica() {
   try {
     await executarDeteccaoFraude();

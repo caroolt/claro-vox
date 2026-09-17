@@ -208,6 +208,41 @@ export interface AlertaFraude {
   resolvido_em?: string | null;
   resolvido_por?: string | null;
   nota_resolucao?: string | null;
+  caso_id?: string | null;
+}
+
+export type StatusCaso = "aberto" | "em_investigacao" | "revisado" | "descartado";
+
+// Um caso agrupa todos os alertas (de qualquer regra) que citam clientes em
+// comum — a unidade de investigação da aba Fraude, não o alerta individual.
+export interface CasoFraude {
+  id: string;
+  status: StatusCaso;
+  analista_id: string | null;
+  assumido_em: string | null;
+  criado_em: string;
+  atualizado_em: string;
+  clientes_ids: string[];
+  maior_confianca: ConfiancaFraude;
+  alertas: AlertaFraude[];
+  bloqueados: string[];
+}
+
+export interface PaginaHistoricoFraude {
+  itens: AlertaFraude[];
+  proximo_cursor: string | null;
+}
+
+// Filtros server-side aceitos por /v1/fraude/alertas, /alertas/historico e
+// /casos — a aba Fraude não filtra mais em cima da lista inteira no navegador.
+export interface FiltrosFraude {
+  regra?: RegraFraude;
+  confianca?: ConfiancaFraude;
+  desde?: string;
+  ate?: string;
+  q?: string;
+  cpf?: string;
+  limit?: number;
 }
 
 export interface GrafoFraudeNo {
@@ -232,6 +267,7 @@ export interface GrafoFraudeAresta {
 export interface GrafoFraude {
   nos: GrafoFraudeNo[];
   arestas: GrafoFraudeAresta[];
+  truncado?: boolean;
 }
 
 export interface ClienteDetalhe {

@@ -213,12 +213,66 @@ CREATE TABLE IF NOT EXISTS alerta_fraude (
   nota_resolucao   TEXT
 );
 
+-- Watermark de última checagem incremental das Regras B/C — evita reescanear
+-- a base inteira de sessões/mensagens a cada ciclo do job periódico. Regra A
+-- fica de fora: já é avaliada em tempo real na contratação (contratos.ts) e
+-- seu scan periódico é barato (bounded pelo nº de contratos pré-pagos, não
+-- pela base de clientes). `ultimo_parametro` guarda o limiar usado na última
+-- rodada da Regra C — se o admin mudar `limiar_similaridade_estilo`, a
+-- diferença força um recomputo completo (ver fraudeDeteccao.ts) em vez de só
+-- reavaliar quem mandou mensagem nova.
+CREATE TABLE IF NOT EXISTS fraude_scan_estado (
+  regra            TEXT PRIMARY KEY CHECK (regra IN ('B_dispositivo_ip','C_estilo_escrita')),
+  ultimo_scan_em   TIMESTAMPTZ NOT NULL DEFAULT '-infinity',
+  ultimo_parametro NUMERIC
+);
+
+-- Perfil estilométrico persistido por cliente (Regra C) — recalculado só
+-- quando o cliente manda mensagem nova, nunca a cada ciclo. `bucket` agrupa
+-- clientes de estilo parecido (tamanho médio de palavra + diversidade
+-- léxica, arredondados a 1 casa) para que a comparação par-a-par nunca
+-- precise varrer a base inteira — só o balde do cliente e os 8 vizinhos.
+CREATE TABLE IF NOT EXISTS perfil_estilo_cliente (
+  cliente_id     UUID PRIMARY KEY REFERENCES cliente(id) ON DELETE CASCADE,
+  perfil         JSONB NOT NULL,
+  bucket         TEXT NOT NULL,
+  atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Agrupa alertas que citam os mesmos clientes num único "caso" investigável
+-- — evita que um time de analistas trate N alertas quase idênticos como N
+-- investigações separadas. Recalculado por componentes conexos a cada ciclo
+-- de detecção (fraudeDeteccao.ts). `analista_id` segue o mesmo modelo de
+-- confiança de handoff.atendente_id: sempre o usuário autenticado que
+-- assumiu, nunca um valor vindo do corpo da requisição.
+CREATE TABLE IF NOT EXISTS caso_fraude (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  status         TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto','em_investigacao','revisado','descartado')),
+  analista_id    TEXT,
+  assumido_em    TIMESTAMPTZ,
+  criado_em      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE alerta_fraude ADD COLUMN IF NOT EXISTS caso_id UUID REFERENCES caso_fraude(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_sessao_estado ON sessao(estado);
 CREATE INDEX IF NOT EXISTS idx_mensagem_sessao ON mensagem(sessao_id);
 CREATE INDEX IF NOT EXISTS idx_cliente_cpf_hash ON cliente(cpf_hash);
 CREATE INDEX IF NOT EXISTS idx_sessao_dispositivo ON sessao(dispositivo_id);
 CREATE INDEX IF NOT EXISTS idx_sessao_ip ON sessao(ip_origem);
+CREATE INDEX IF NOT EXISTS idx_sessao_cliente ON sessao(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_sessao_atualizado_em ON sessao(atualizado_em);
+CREATE INDEX IF NOT EXISTS idx_mensagem_cliente_timestamp ON mensagem(timestamp) WHERE remetente = 'cliente';
+CREATE INDEX IF NOT EXISTS idx_contrato_prepago_confirmado ON contrato(cliente_id) WHERE tipo_plano = 'pre-pago' AND status = 'confirmado';
 CREATE INDEX IF NOT EXISTS idx_alerta_fraude_status ON alerta_fraude(status);
+CREATE INDEX IF NOT EXISTS idx_alerta_fraude_aberto ON alerta_fraude(confianca, criado_em DESC) WHERE status = 'aberto';
+CREATE INDEX IF NOT EXISTS idx_alerta_fraude_historico ON alerta_fraude(resolvido_em DESC, id DESC) WHERE status IN ('revisado','descartado');
+CREATE INDEX IF NOT EXISTS idx_alerta_fraude_regra ON alerta_fraude(regra);
+CREATE INDEX IF NOT EXISTS idx_alerta_fraude_clientes_ids ON alerta_fraude USING GIN (clientes_ids);
+CREATE INDEX IF NOT EXISTS idx_alerta_fraude_caso ON alerta_fraude(caso_id);
+CREATE INDEX IF NOT EXISTS idx_caso_fraude_status ON caso_fraude(status);
+CREATE INDEX IF NOT EXISTS idx_perfil_estilo_bucket ON perfil_estilo_cliente(bucket);
 
 INSERT INTO configuracao (chave, valor, descricao) VALUES
   ('meta_transbordo_pct', 25, 'Meta (%) da taxa de transbordo. Acima disso, a Visão geral destaca o indicador'),

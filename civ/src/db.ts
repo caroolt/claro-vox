@@ -99,6 +99,49 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE alerta_fraude ADD COLUMN IF NOT EXISTS resolvido_por TEXT`);
   await pool.query(`ALTER TABLE alerta_fraude ADD COLUMN IF NOT EXISTS nota_resolucao TEXT`);
 
+  // Escala do motor de detecção de fraude: scan incremental (watermark por
+  // regra), perfil estilométrico persistido/bucketizado (Regra C) e
+  // agrupamento de alertas em "casos" investigáveis com atribuição de
+  // analista — ver a nota extensa em schema.sql sobre cada tabela.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fraude_scan_estado (
+      regra            TEXT PRIMARY KEY CHECK (regra IN ('B_dispositivo_ip','C_estilo_escrita')),
+      ultimo_scan_em   TIMESTAMPTZ NOT NULL DEFAULT '-infinity',
+      ultimo_parametro NUMERIC
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS perfil_estilo_cliente (
+      cliente_id     UUID PRIMARY KEY REFERENCES cliente(id) ON DELETE CASCADE,
+      perfil         JSONB NOT NULL,
+      bucket         TEXT NOT NULL,
+      atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS caso_fraude (
+      id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      status         TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto','em_investigacao','revisado','descartado')),
+      analista_id    TEXT,
+      assumido_em    TIMESTAMPTZ,
+      criado_em      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`ALTER TABLE alerta_fraude ADD COLUMN IF NOT EXISTS caso_id UUID REFERENCES caso_fraude(id) ON DELETE SET NULL`);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_sessao_cliente ON sessao(cliente_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_sessao_atualizado_em ON sessao(atualizado_em)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_mensagem_cliente_timestamp ON mensagem(timestamp) WHERE remetente = 'cliente'`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_contrato_prepago_confirmado ON contrato(cliente_id) WHERE tipo_plano = 'pre-pago' AND status = 'confirmado'`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerta_fraude_aberto ON alerta_fraude(confianca, criado_em DESC) WHERE status = 'aberto'`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerta_fraude_historico ON alerta_fraude(resolvido_em DESC, id DESC) WHERE status IN ('revisado','descartado')`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerta_fraude_regra ON alerta_fraude(regra)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerta_fraude_clientes_ids ON alerta_fraude USING GIN (clientes_ids)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_alerta_fraude_caso ON alerta_fraude(caso_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_caso_fraude_status ON caso_fraude(status)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_perfil_estilo_bucket ON perfil_estilo_cliente(bucket)`);
+
   await pool.query(`
     INSERT INTO configuracao (chave, valor, descricao) VALUES
       ('meta_transbordo_pct', 25, 'Meta (%) da taxa de transbordo. Acima disso, a Visão geral destaca o indicador'),

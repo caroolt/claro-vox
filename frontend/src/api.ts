@@ -2,17 +2,21 @@ import type {
   AlertaFraude,
   AuditoriaEntry,
   Briefing,
+  CasoFraude,
   ClienteAlerta,
   ClienteDetalhe,
   ClienteResumo,
   Configuracao,
+  FiltrosFraude,
   GrafoFraude,
   KnowledgeItem,
   LoginConcluido,
   LoginIniciado,
   Mensagem,
   Metrics,
+  PaginaHistoricoFraude,
   SessaoResumo,
+  StatusCaso,
   Suggestions,
   Transcript,
   Usuario,
@@ -192,15 +196,54 @@ export const configuracoes = {
 };
 
 // -------- Detecção de fraude cross-canal (aba "Fraude", exclusiva do admin) --------
+// Todo filtro (regra/confiança/período/nome/CPF) agora é resolvido no
+// servidor — a aba não carrega mais a lista inteira pra filtrar no navegador.
+function qsFiltrosFraude(filtros: FiltrosFraude = {}, extra?: Record<string, string>): string {
+  const qs = new URLSearchParams();
+  if (filtros.regra) qs.set("regra", filtros.regra);
+  if (filtros.confianca) qs.set("confianca", filtros.confianca);
+  if (filtros.desde) qs.set("desde", filtros.desde);
+  if (filtros.ate) qs.set("ate", filtros.ate);
+  if (filtros.q) qs.set("q", filtros.q);
+  if (filtros.cpf) qs.set("cpf", filtros.cpf);
+  if (filtros.limit) qs.set("limit", String(filtros.limit));
+  if (extra) Object.entries(extra).forEach(([k, v]) => qs.set(k, v));
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+
 export const fraude = {
-  alertas: () => req<AlertaFraude[]>(`${CIV_URL}/v1/fraude/alertas`),
-  historico: () => req<AlertaFraude[]>(`${CIV_URL}/v1/fraude/alertas/historico`),
-  grafo: () => req<GrafoFraude>(`${CIV_URL}/v1/fraude/grafo`),
+  alertas: (filtros?: FiltrosFraude) => req<AlertaFraude[]>(`${CIV_URL}/v1/fraude/alertas${qsFiltrosFraude(filtros)}`),
+  historico: (filtros?: FiltrosFraude & { cursor?: string }) => {
+    const { cursor, ...resto } = filtros || {};
+    return req<PaginaHistoricoFraude>(
+      `${CIV_URL}/v1/fraude/alertas/historico${qsFiltrosFraude(resto, cursor ? { cursor } : undefined)}`
+    );
+  },
   atualizarAlerta: (id: string, status: "revisado" | "descartado", nota?: string) =>
     req<{ id: string; status: string }>(`${CIV_URL}/v1/fraude/alertas/${id}`, {
       method: "PUT",
       body: { status, nota },
     }),
+  // Fila de triagem: um caso por investigação, agrupando os alertas que
+  // citam clientes em comum — a view principal da aba Fraude.
+  casos: (filtros?: FiltrosFraude & { status?: StatusCaso }) => {
+    const { status, ...resto } = filtros || {};
+    return req<CasoFraude[]>(`${CIV_URL}/v1/fraude/casos${qsFiltrosFraude(resto, status ? { status } : undefined)}`);
+  },
+  casoAssumir: (id: string) =>
+    req<{ id: string; status: StatusCaso; analista_id: string; assumido_em: string }>(
+      `${CIV_URL}/v1/fraude/casos/${id}/assumir`,
+      { method: "POST" }
+    ),
+  casoLiberar: (id: string) =>
+    req<{ id: string; status: StatusCaso }>(`${CIV_URL}/v1/fraude/casos/${id}/liberar`, { method: "POST" }),
+  casoResolver: (id: string, status: "revisado" | "descartado", nota?: string) =>
+    req<{ id: string; status: string; alertas_resolvidos: number }>(`${CIV_URL}/v1/fraude/casos/${id}`, {
+      method: "PUT",
+      body: { status, nota },
+    }),
+  grafoCaso: (id: string) => req<GrafoFraude>(`${CIV_URL}/v1/fraude/casos/${id}/grafo`),
 };
 
 export function wsBriefingUrl(): string {
