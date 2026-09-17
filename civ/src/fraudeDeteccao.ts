@@ -488,6 +488,17 @@ export async function recomputarCasos(): Promise<void> {
   }
 }
 
+// Trava de reentrância: sem isso, duas chamadas sobrepostas (o job
+// periódico disparando de novo antes da rodada anterior terminar — cada vez
+// mais provável quanto maior a base, exatamente o cenário que esse redesenho
+// existe pra suportar) competem escrevendo o mesmo watermark em
+// fraude_scan_estado. Uma rodada em andamento pode ler "ainda não mudou" o
+// parâmetro/watermark que a OUTRA rodada está prestes a gravar, perdendo a
+// reavaliação de pares que deveriam ter sido reabertos/fechados. Uma
+// segunda chamada enquanto a primeira roda simplesmente aguarda o mesmo
+// resultado, em vez de iniciar uma rodada concorrente.
+let execucaoEmAndamento: Promise<boolean> | null = null;
+
 // Roda as três regras, reconcilia alertas obsoletos, grava/atualiza
 // alerta_fraude e recalcula o agrupamento em casos. Chamada só pelo job
 // periódico (deteccaoFraude.ts) — GET /v1/fraude/alertas NÃO dispara mais
@@ -495,6 +506,16 @@ export async function recomputarCasos(): Promise<void> {
 // abertura da aba. Devolve true se algo mudou (novo alerta ou alerta
 // fechado automaticamente), e nesse caso já avisa os painéis conectados.
 export async function executarDeteccaoFraude(): Promise<boolean> {
+  if (execucaoEmAndamento) return execucaoEmAndamento;
+  execucaoEmAndamento = executarDeteccaoFraudeInterno();
+  try {
+    return await execucaoEmAndamento;
+  } finally {
+    execucaoEmAndamento = null;
+  }
+}
+
+async function executarDeteccaoFraudeInterno(): Promise<boolean> {
   const [limiarA, limiarC] = await Promise.all([
     configValor("limiar_fraude_pre_pago", 3),
     configValor("limiar_similaridade_estilo", 0.85),

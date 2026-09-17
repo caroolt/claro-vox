@@ -410,6 +410,14 @@ export function FraudeTab({
         </div>
       </div>
 
+      {aba === "casos" && (
+        <p className="text-xs text-gray-400">
+          Cada caso agrupa os alertas (de qualquer regra) que citam os mesmos clientes. Clique em{" "}
+          <span className="font-medium text-gray-500">Ver grafo</span> num caso pra visualizar as identidades cruzadas
+          envolvidas nele.
+        </p>
+      )}
+
       {carregando ? (
         <p className="text-sm text-gray-400">Carregando…</p>
       ) : aba === "casos" ? (
@@ -496,14 +504,15 @@ export function FraudeTab({
                       )}
                       <button
                         onClick={() => alternarGrafo(caso.id)}
-                        title="Ver grafo do caso"
-                        className={`rounded-lg border p-1.5 ${
+                        title="Ver grafo de identidades cruzadas deste caso"
+                        className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium ${
                           grafoAberto === caso.id
                             ? "border-claro-red text-claro-red"
                             : "border-gray-200 text-gray-500 hover:border-claro-red hover:text-claro-red"
                         }`}
                       >
                         <ShieldAlert className="h-3.5 w-3.5" strokeWidth={2} />
+                        Ver grafo
                       </button>
                       <button
                         onClick={() => alternarExpandido(caso.id)}
