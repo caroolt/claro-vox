@@ -1,5 +1,6 @@
 import { Globe, MessageCircle, Phone, Smartphone, type LucideIcon } from "lucide-react";
 import type { Segment } from "../charts";
+import type { ConfiancaFraude } from "../../types";
 
 // Chaves da paleta de status (STATUS_HEX em ../charts) — repetidas aqui como
 // união de literais para não precisar importar o objeto só pelo tipo.
@@ -50,6 +51,30 @@ export const CANAL_ORDEM = ["whatsapp", "site", "app", "voz"];
 export const TIPO_CLIENTE_META: Record<string, { label: string; badge: string }> = {
   ativo: { label: "Cliente ativo", badge: "bg-green-100 text-green-700" },
   prospeccao: { label: "Prospecção", badge: "bg-blue-100 text-blue-700" },
+};
+
+// Rótulo do nível "confianca" do alerta de fraude (nome do campo mantido no
+// backend/tipos — ver ConfiancaFraude) exibido como RISCO DE FRAUDE, não
+// como confiança no cliente: "confiança alta" no sentido antigo do rótulo
+// significava "quase certeza de que é fraude", o oposto de "dá pra confiar
+// nessa pessoa" — ambíguo o bastante pra confundir atendente. Compartilhado
+// entre a aba Fraude e o histórico de fraude no dossiê do cliente.
+export const RISCO_FRAUDE_META: Record<ConfiancaFraude, { label: string; badge: string }> = {
+  alta: { label: "Risco de fraude alto", badge: "bg-red-100 text-red-700" },
+  media: { label: "Risco de fraude médio", badge: "bg-amber-100 text-amber-800" },
+  baixa: { label: "Risco de fraude baixo", badge: "bg-gray-100 text-gray-600" },
+};
+
+export const STATUS_RESOLUCAO_FRAUDE_META: Record<"aberto" | "revisado" | "descartado", { label: string; badge: string }> = {
+  aberto: { label: "Em aberto", badge: "bg-red-100 text-red-700" },
+  revisado: { label: "Revisado", badge: "bg-green-100 text-green-700" },
+  descartado: { label: "Descartado (falso positivo)", badge: "bg-gray-100 text-gray-600" },
+};
+
+export const REGRA_FRAUDE_META: Record<string, { titulo: string }> = {
+  A_volume_cpf: { titulo: "Volume de linhas no mesmo CPF" },
+  B_dispositivo_ip: { titulo: "Dispositivo/IP compartilhado" },
+  C_estilo_escrita: { titulo: "Estilo de escrita semelhante" },
 };
 
 // Monta a lista de segmentos de um breakdown (Record<chave,valor>) na ordem

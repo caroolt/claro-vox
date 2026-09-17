@@ -3,31 +3,20 @@ import ReactFlow, { Background, Controls, type Edge, type Node } from "reactflow
 import "reactflow/dist/style.css";
 import { AlertTriangle, Check, History, Info, Lock, Search, ShieldAlert, Unlock, X } from "lucide-react";
 import { civ, fraude } from "../../api";
-import type { AlertaFraude, ConfiancaFraude, GrafoFraude } from "../../types";
+import type { AlertaFraude, GrafoFraude } from "../../types";
 import type { WsEvent } from "../../useBriefingSocket";
 import { SectionTitle } from "./ui";
-import { fmtDataHora } from "./meta";
+import { fmtDataHora, RISCO_FRAUDE_META as CONFIANCA_META, STATUS_RESOLUCAO_FRAUDE_META as STATUS_RESOLUCAO_META } from "./meta";
 
 interface ClienteEvidencia {
   id: string;
   nome: string;
 }
 
-const CONFIANCA_META: Record<ConfiancaFraude, { label: string; badge: string }> = {
-  alta: { label: "Confiança alta", badge: "bg-red-100 text-red-700" },
-  media: { label: "Confiança média", badge: "bg-amber-100 text-amber-800" },
-  baixa: { label: "Confiança baixa", badge: "bg-gray-100 text-gray-600" },
-};
-
 const REGRA_META: Record<string, { titulo: string; rotuloAresta: string }> = {
   A_volume_cpf: { titulo: "Volume de linhas no mesmo CPF", rotuloAresta: "linha pré-paga" },
   B_dispositivo_ip: { titulo: "Dispositivo/IP compartilhado", rotuloAresta: "dispositivo/IP" },
   C_estilo_escrita: { titulo: "Estilo de escrita semelhante", rotuloAresta: "estilo semelhante" },
-};
-
-const STATUS_RESOLUCAO_META: Record<"revisado" | "descartado", { label: string; badge: string }> = {
-  revisado: { label: "Revisado", badge: "bg-green-100 text-green-700" },
-  descartado: { label: "Descartado (falso positivo)", badge: "bg-gray-100 text-gray-600" },
 };
 
 // Layout circular simples — o grafo é pequeno (só clientes com alerta em
@@ -324,7 +313,7 @@ export function FraudeTab({
               onChange={(e) => setFiltroConfianca(e.target.value)}
               className="rounded-lg border border-gray-300 py-1.5 px-2 text-xs text-gray-600 focus:border-claro-red focus:outline-none"
             >
-              <option value="">Toda confiança</option>
+              <option value="">Todo risco</option>
               {Object.entries(CONFIANCA_META).map(([chave, meta]) => (
                 <option key={chave} value={chave}>{meta.label}</option>
               ))}
@@ -439,7 +428,7 @@ export function FraudeTab({
             {termoBusca || filtroRegra || filtroConfianca || filtroDataInicio || filtroDataFim
               ? `${alertasFiltrados.length} de ${listaBase.length} alertas (filtrado)`
               : abaAlertas === "abertos"
-                ? `${alertas.length} alertas · ${alertas.filter((a) => a.confianca === "alta").length} de confiança alta`
+                ? `${alertas.length} alertas · ${alertas.filter((a) => a.confianca === "alta").length} de risco alto`
                 : `${historico.length} alertas resolvidos`}
           </span>
         </div>
@@ -456,7 +445,7 @@ export function FraudeTab({
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-gray-400">
-                  <th className="px-3 pb-2 pt-3">Confiança</th>
+                  <th className="px-3 pb-2 pt-3">Risco de fraude</th>
                   <th className="px-3 pb-2 pt-3">Regra</th>
                   <th className="px-3 pb-2 pt-3">Envolvidos</th>
                   {abaAlertas === "abertos" ? (
@@ -673,8 +662,17 @@ function PopupResolucao({
 // Painel de explicação (camada de XAI): decompõe a evidência bruta por trás
 // do alerta, nunca só um veredito. Para a Regra C, mostra a similaridade
 // por feature, não só o número final.
+// Rótulo amigável para a chave "valor" da evidência, que muda de sentido
+// conforme o tipo (IP de origem vs. dispositivo) — ver Regra B em fraude.ts.
+const ROTULO_VALOR_POR_TIPO: Record<string, string> = {
+  ip_origem: "IP",
+  dispositivo_id: "Dispositivo",
+};
+
 function PainelExplicacao({ alerta, onClose }: { alerta: AlertaFraude; onClose: () => void }) {
   const porFeature = alerta.evidencia.por_feature as Record<string, number> | undefined;
+  const tipoEvidencia = alerta.evidencia.tipo as string | undefined;
+  const localizacaoIp = alerta.evidencia.localizacao as string | null | undefined;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
@@ -696,16 +694,24 @@ function PainelExplicacao({ alerta, onClose }: { alerta: AlertaFraude; onClose: 
             <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-400">Evidência bruta</p>
             <dl className="space-y-1 text-xs text-gray-600">
               {Object.entries(alerta.evidencia)
-                .filter(([k]) => k !== "por_feature")
+                // "tipo" só serve pra rotular "valor" (IP vs. dispositivo) e
+                // "localizacao" é mostrada junto do IP na mesma linha, em
+                // vez de como uma linha solta — nenhum dos dois precisa de
+                // uma linha própria aqui.
+                .filter(([k]) => k !== "por_feature" && k !== "tipo" && k !== "localizacao")
                 .map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-3">
-                    <dt className="text-gray-400">{k}</dt>
+                    <dt className="text-gray-400">
+                      {k === "valor" ? ROTULO_VALOR_POR_TIPO[tipoEvidencia || ""] || k : k}
+                    </dt>
                     <dd className="text-right font-medium text-gray-700">
                       {k === "clientes"
                         ? (v as ClienteEvidencia[]).map((c) => c.nome).join(", ")
                         : Array.isArray(v)
                           ? v.join(", ")
-                          : String(v)}
+                          : k === "valor" && tipoEvidencia === "ip_origem" && localizacaoIp
+                            ? `${String(v)} (${localizacaoIp})`
+                            : String(v)}
                     </dd>
                   </div>
                 ))}

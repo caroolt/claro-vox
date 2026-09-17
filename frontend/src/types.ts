@@ -267,4 +267,5 @@ export interface ClienteDetalhe {
   tom_emocional: Record<string, number>;
   sessoes: ClienteSessao[];
   briefings: ClienteBriefing[];
+  fraude_alertas: AlertaFraude[];
 }

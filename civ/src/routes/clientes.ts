@@ -137,7 +137,7 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
   if (!clienteRes.rows.length) return res.status(404).json({ erro: "cliente não encontrado" });
   const cliente = clienteRes.rows[0];
 
-  const [acess, sessoesRes, briefingsRes, npsRes, tomRes, msgCount, fraudeRes] = await Promise.all([
+  const [acess, sessoesRes, briefingsRes, npsRes, tomRes, msgCount, fraudeRes, fraudeAlertasRes] = await Promise.all([
     pool.query(
       `SELECT modalidade_libras, leitor_de_tela, linguagem_simplificada
        FROM preferencia_acessibilidade WHERE cliente_id = $1`,
@@ -202,6 +202,18 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
        ) AS possivel_fraude`,
       [id]
     ),
+    // Histórico de fraude deste cliente para o drawer de dossiê (visível
+    // tanto pro admin quanto pro atendente, ao contrário da aba Fraude em
+    // si, que é exclusiva do admin) — todo alerta que já mencionou esse
+    // cliente, aberto ou já resolvido/descartado, mais recente primeiro.
+    pool.query(
+      `SELECT id, regra, clientes_ids, evidencia, explicacao, confianca, status, criado_em,
+              resolvido_em, resolvido_por, nota_resolucao
+       FROM alerta_fraude
+       WHERE $1 = ANY(clientes_ids)
+       ORDER BY criado_em DESC`,
+      [id]
+    ),
   ]);
 
   const tom_emocional: Record<string, number> = {};
@@ -247,6 +259,7 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
     tom_emocional,
     sessoes: sessoesRes.rows,
     briefings: briefingsRes.rows,
+    fraude_alertas: fraudeAlertasRes.rows,
   });
 }));
 

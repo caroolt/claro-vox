@@ -17,7 +17,16 @@ import { civ } from "../../api";
 import type { ClienteDetalhe } from "../../types";
 import type { WsEvent } from "../../useBriefingSocket";
 import { StackedBar, STATUS_HEX } from "../charts";
-import { fmtData, fmtDataHora, montarSegmentos, TOM_META, TOM_ORDEM } from "./meta";
+import {
+  fmtData,
+  fmtDataHora,
+  montarSegmentos,
+  REGRA_FRAUDE_META,
+  RISCO_FRAUDE_META,
+  STATUS_RESOLUCAO_FRAUDE_META,
+  TOM_META,
+  TOM_ORDEM,
+} from "./meta";
 import { CanalTag, EstadoBadge, Row, TipoClienteBadge, TomBadge } from "./ui";
 import { exportarConversaPdf } from "./exportar";
 
@@ -261,6 +270,49 @@ export function ClienteDrawer({
                     );
                   })}
                   {dados.briefings.length === 0 && <p className="text-sm text-gray-400">Nenhum transbordo.</p>}
+                </div>
+              </section>
+
+              {/* Histórico de fraude — visível pro admin e pro atendente
+                  (diferente da aba Fraude em si, exclusiva do admin), pra
+                  quem está atendendo o cliente já ver de cara se ele tem
+                  alerta em aberto, já revisado ou já descartado como falso
+                  positivo, sem precisar de acesso à aba Fraude. */}
+              <section className="rounded-xl border border-gray-200 bg-white p-4">
+                <TituloSecao icone={ShieldAlert}>Histórico de fraude ({dados.fraude_alertas.length})</TituloSecao>
+                <div className="space-y-2">
+                  {dados.fraude_alertas.map((a) => (
+                    <div key={a.id} className="rounded-lg border border-gray-100 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <span className="text-xs font-medium text-gray-700">
+                          {REGRA_FRAUDE_META[a.regra]?.titulo || a.regra}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] ${RISCO_FRAUDE_META[a.confianca].badge}`}>
+                            {RISCO_FRAUDE_META[a.confianca].label}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_RESOLUCAO_FRAUDE_META[a.status].badge}`}>
+                            {STATUS_RESOLUCAO_FRAUDE_META[a.status].label}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-600">{a.explicacao}</p>
+                      <div className="mt-1 text-[11px] text-gray-400">
+                        {a.status === "aberto" ? (
+                          <span>gerado em {fmtDataHora(a.criado_em)}</span>
+                        ) : (
+                          <>
+                            <span>resolvido em {fmtDataHora(a.resolvido_em)}</span>
+                            {a.resolvido_por && <span> por {a.resolvido_por}</span>}
+                            {a.nota_resolucao && <p className="mt-0.5 text-gray-500">{a.nota_resolucao}</p>}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {dados.fraude_alertas.length === 0 && (
+                    <p className="text-sm text-gray-400">Nenhum alerta de fraude para este cliente.</p>
+                  )}
                 </div>
               </section>
             </>

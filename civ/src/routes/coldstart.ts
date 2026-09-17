@@ -26,7 +26,11 @@ coldstartRouter.post("/start", h(async (req, res) => {
   const canalId = await getOrCreateCanal(canal);
   // dispositivo_id/ip_origem: sinais cross-identidade da camada de
   // detecção de fraude (Regra B) — ligam clientes de CPFs diferentes que
-  // compartilham o mesmo aparelho ou a mesma origem de rede.
+  // compartilham o mesmo aparelho ou a mesma origem de rede. ip_origem não
+  // é um campo que o front expõe pro usuário digitar: o Orquestrador é
+  // quem popula esse campo a partir de request.client.host (o IP real de
+  // quem chamou o Orquestrador — ver orchestrator/main.py), nunca um valor
+  // que o próprio cliente escolhe.
   const sessao = await pool.query(
     `INSERT INTO sessao (canal_origem_id, estado, cold_start_etapa, dispositivo_id, ip_origem)
      VALUES ($1, 'COLD_START', 'pergunta_cliente', $2, $3) RETURNING id, estado`,

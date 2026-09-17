@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { extrairPerfilEstilo, similaridadeGeral, similaridadePorFeature, PerfilEstilo } from "../stylometria";
 import { NOME_ANONIMIZADO } from "./clientes";
 import { broadcast } from "../ws";
+import { localizarIp, formatarLocalizacao } from "../geoip";
 
 export const fraudeRouter = Router();
 
@@ -110,10 +111,15 @@ async function detectarRegraB(): Promise<AlertaGerado[]> {
   for (const row of ips.rows) {
     const ids = [...row.clientes].sort();
     const clientes = ids.map((id) => ({ id, nome: nomes.get(id) || id }));
+    // Localização real a partir do IP (base GeoLite2, offline — ver
+    // geoip.ts). IPs de rede local/privada (comuns em ambiente de teste)
+    // não têm geolocalização pública, então o campo pode vir nulo — igual
+    // a qualquer serviço de geoIP de verdade.
+    const localizacao = formatarLocalizacao(localizarIp(row.chave));
     alertas.push({
       regra: "B_dispositivo_ip",
       clientes_ids: ids,
-      evidencia: { tipo: "ip_origem", valor: row.chave, clientes },
+      evidencia: { tipo: "ip_origem", valor: row.chave, localizacao, clientes },
       explicacao: `A mesma origem de rede (IP) foi usada por ${ids.length} CPFs diferentes: ${clientes.map((c) => c.nome).join(", ")}.`,
       confianca: "alta",
     });

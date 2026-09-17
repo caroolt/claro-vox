@@ -78,7 +78,7 @@ function linhaAlertaFraude(a: AlertaFraude) {
   return {
     alerta_id: a.id,
     regra: a.regra,
-    confianca: a.confianca,
+    risco_fraude: a.confianca,
     status: a.status,
     envolvidos: envolvidos.map((c) => c.nome).join(", "),
     explicacao: a.explicacao,
