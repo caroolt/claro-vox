@@ -194,7 +194,7 @@ export function OperacaoTab({
         {/* Fila de transbordo */}
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
-            <SectionTitle icone={Headset}>Fila de transbordo (RF007-009)</SectionTitle>
+            <SectionTitle icone={Headset}>Fila de transbordo</SectionTitle>
             <div className="flex rounded-lg bg-gray-100 p-0.5 text-xs">
               <button
                 onClick={() => setFilaTab("pendentes")}
@@ -279,7 +279,7 @@ export function OperacaoTab({
         {/* Sessões ativas */}
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
-            <SectionTitle icone={Radio}>Sessões ativas (contexto persistente, RF001)</SectionTitle>
+            <SectionTitle icone={Radio}>Sessões ativas</SectionTitle>
             <span className="text-[11px] text-gray-400">{sessoesFiltradas.length} de {sessoes.length}</span>
           </div>
           <div className="max-h-[28rem] space-y-2 overflow-y-auto">

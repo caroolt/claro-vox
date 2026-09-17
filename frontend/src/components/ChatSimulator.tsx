@@ -201,7 +201,7 @@ export function ChatSimulator() {
         // gravadas (sem resposta do Vox nem chegar a atendente nenhum,
         // já que não existe atendente designado para a sessão nova).
         setAtendimentoHumano(false);
-        add("sistema", `📡 Reconhecido automaticamente no canal ${canal} (RF004), trazendo o contexto do canal anterior: ${r.canal_anterior || "nenhum"}.`);
+        add("sistema", `📡 Reconhecido automaticamente no canal ${canal}, trazendo o contexto do canal anterior: ${r.canal_anterior || "nenhum"}.`);
         add("vox", r.mensagem);
       } else {
         add("sistema", "CPF não encontrado. Iniciando um novo atendimento (Cold Start) neste canal.");
@@ -290,7 +290,7 @@ export function ChatSimulator() {
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" strokeWidth={2} />
           <span className="text-sm text-amber-800">
             Simulando contato pelo canal <strong>{canalAtual.rotulo}</strong>: informe o CPF para reconhecimento
-            automático (RF004)
+            automático
           </span>
           <input
             value={cpfTroca}
@@ -341,7 +341,7 @@ export function ChatSimulator() {
                 </span>
                 <p className="mb-2 text-lg text-gray-600">Simulador de atendimento</p>
                 <p className="mb-6 px-6 text-sm">
-                  Escolha um canal acima e inicie a conversa para ver o Cold Start (RF010/RF011) em ação.
+                  Escolha um canal acima e inicie a conversa para ver o Cold Start em ação.
                 </p>
                 <button
                   onClick={iniciarConversa}
