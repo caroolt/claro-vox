@@ -96,11 +96,11 @@ export interface Metrics {
   taxa_transbordo_pct: number;
   tom_emocional: Record<string, number>;
   total_mensagens: number;
-  disponibilidade_slo_pct: number;
-  latencia_p95_alvo_ms: number;
+  taxa_fraude_pct: number;
   sessoes_por_canal: Record<string, number>;
   total_sessoes: number;
   total_transbordos: number;
+  total_sessoes_fraude: number;
   nps: {
     ia: NpsResumo;
     atendente: NpsResumo;

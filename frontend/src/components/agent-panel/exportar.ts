@@ -1,6 +1,14 @@
 import { civ, fraude } from "../../api";
 import type { AlertaFraude, Briefing, Metrics, SessaoResumo, Transcript } from "../../types";
-import { CANAL_META, ESTADO_META, fmtDataHora, TOM_META } from "./meta";
+import { CANAL_META, ESTADO_META, fmtDataHora, TOM_META, type Periodo } from "./meta";
+
+// Mesmo critério de comparação de string usado no filtro de data da aba
+// Fraude (ver FraudeTab) — funciona porque strings ISO comparam
+// lexicograficamente na mesma ordem que as datas que representam.
+function noPeriodo(iso: string | null | undefined, periodo: Periodo): boolean {
+  if (!iso) return false;
+  return iso >= periodo.desde && iso <= `${periodo.ate}T23:59:59`;
+}
 
 // ---------------------------------------------------------------------------
 // CSV
@@ -86,13 +94,15 @@ function linhaAlertaFraude(a: AlertaFraude) {
   };
 }
 
-function linhasMetricas(m: Metrics): Record<string, unknown>[] {
+function linhasMetricas(m: Metrics, periodo: Periodo): Record<string, unknown>[] {
   const linhas: { indicador: string; valor: unknown }[] = [
+    { indicador: "periodo_desde", valor: periodo.desde },
+    { indicador: "periodo_ate", valor: periodo.ate },
     { indicador: "taxa_transbordo_pct", valor: m.taxa_transbordo_pct },
     { indicador: "total_sessoes", valor: m.total_sessoes },
     { indicador: "total_transbordos", valor: m.total_transbordos },
     { indicador: "total_mensagens", valor: m.total_mensagens },
-    { indicador: "disponibilidade_slo_pct", valor: m.disponibilidade_slo_pct },
+    { indicador: "taxa_fraude_pct", valor: m.taxa_fraude_pct },
     { indicador: "nps_ia_media", valor: m.nps.ia.media },
     { indicador: "nps_ia_indice", valor: m.nps.ia.indice },
     { indicador: "nps_ia_respostas", valor: m.nps.ia.respostas },
@@ -106,17 +116,29 @@ function linhasMetricas(m: Metrics): Record<string, unknown>[] {
   return linhas;
 }
 
-// Exporta todo o painel num único .zip com um CSV por conjunto de dados.
+// Exporta todo o painel num único .zip com um CSV por conjunto de dados,
+// todos recortados pelo mesmo período (mês corrente por padrão) escolhido no
+// filtro de data da Visão geral — mesmo quando o export é disparado de outra
+// aba, já que o botão "Exportar CSV" é único no cabeçalho do painel.
 export async function exportarBriefingZip(dados: {
-  sessoes: SessaoResumo[];
   fila: Briefing[];
   metrics: Metrics | null;
+  periodo: Periodo;
 }) {
   // Carregado sob demanda para não pesar no bundle inicial do painel.
   const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
-  zip.file("sessoes.csv", comBom(linhasParaCsv(dados.sessoes.map(linhaSessao))));
-  zip.file("fila-transbordo.csv", comBom(linhasParaCsv(dados.fila.map(linhaBriefing))));
+
+  // Sessões: busca a base inteira (não só as "ativas" que o painel mantém
+  // carregadas para a operação em tempo real) pra filtrar pelo período —
+  // senão sessões já encerradas dentro do período escolhido ficariam de
+  // fora do export.
+  const todasSessoes: SessaoResumo[] = await civ.sessions(false);
+  const sessoesDoPeriodo = todasSessoes.filter((s) => noPeriodo(s.criado_em, dados.periodo));
+  zip.file("sessoes.csv", comBom(linhasParaCsv(sessoesDoPeriodo.map(linhaSessao))));
+
+  const filaDoPeriodo = dados.fila.filter((b) => noPeriodo(b.gerado_em, dados.periodo));
+  zip.file("fila-transbordo.csv", comBom(linhasParaCsv(filaDoPeriodo.map(linhaBriefing))));
 
   try {
     const clientes = await civ.clientesBuscar({ limit: 500 });
@@ -140,20 +162,22 @@ export async function exportarBriefingZip(dados: {
     zip.file("clientes.csv", comBom("erro;ao;carregar;clientes"));
   }
 
-  if (dados.metrics) zip.file("metricas.csv", comBom(linhasParaCsv(linhasMetricas(dados.metrics))));
+  if (dados.metrics)
+    zip.file("metricas.csv", comBom(linhasParaCsv(linhasMetricas(dados.metrics, dados.periodo))));
 
   // Alertas de fraude — exclusivo do admin no backend (mesmo RBAC da aba
   // Fraude); se quem exportou for atendente, a chamada volta 403 e o
   // arquivo simplesmente não entra no zip, sem quebrar o resto da exportação.
   try {
     const alertas = await fraude.alertas();
-    zip.file("alertas-fraude.csv", comBom(linhasParaCsv(alertas.map(linhaAlertaFraude))));
+    const alertasDoPeriodo = alertas.filter((a) => noPeriodo(a.criado_em, dados.periodo));
+    zip.file("alertas-fraude.csv", comBom(linhasParaCsv(alertasDoPeriodo.map(linhaAlertaFraude))));
   } catch {
     // sem permissão (atendente) ou motor de fraude indisponível — ignora.
   }
 
   const blob = await zip.generateAsync({ type: "blob" });
-  baixarBlob(blob, `vox-briefing-${carimboArquivo()}.zip`);
+  baixarBlob(blob, `vox-briefing-${dados.periodo.desde}_a_${dados.periodo.ate}-${carimboArquivo()}.zip`);
 }
 
 // ---------------------------------------------------------------------------

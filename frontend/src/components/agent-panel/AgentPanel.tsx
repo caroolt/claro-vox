@@ -3,7 +3,7 @@ import { BookOpen, Download } from "lucide-react";
 import { civ, configuracoes as configuracoesApi } from "../../api";
 import type { AuditoriaEntry, Briefing, Configuracao, KnowledgeItem, Metrics, SessaoResumo, Usuario } from "../../types";
 import { useBriefingSocket } from "../../useBriefingSocket";
-import { FILTROS_VAZIOS, type FiltrosOperacao } from "./meta";
+import { FILTROS_VAZIOS, periodoPadrao, type FiltrosOperacao, type Periodo } from "./meta";
 import { exportarBriefingZip } from "./exportar";
 import { VisaoGeralTab } from "./VisaoGeralTab";
 import { OperacaoTab } from "./OperacaoTab";
@@ -55,6 +55,9 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
 
   const [exportandoCsv, setExportandoCsv] = useState(false);
   const [filtros, setFiltros] = useState<FiltrosOperacao>(FILTROS_VAZIOS);
+  // Período (mês corrente por padrão) do filtro de data da Visão geral —
+  // recalcula as métricas do backend, não filtra em memória.
+  const [periodo, setPeriodo] = useState<Periodo>(periodoPadrao());
   const [clienteDrawerId, setClienteDrawerId] = useState<string | null>(null);
   const [briefingAberto, setBriefingAberto] = useState<Briefing | null>(null);
   const [chatSessao, setChatSessao] = useState<ChatSessao | null>(null);
@@ -71,7 +74,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
     const [s, f, m, k, a, cfg] = await Promise.all([
       civ.sessions(true),
       civ.handoffQueue(),
-      usuario.role === "admin" ? civ.metrics() : Promise.resolve(null),
+      usuario.role === "admin" ? civ.metrics(periodo.desde, periodo.ate) : Promise.resolve(null),
       civ.knowledge(),
       usuario.role === "admin" ? civ.auditoria() : Promise.resolve([]),
       configuracoesApi.listar(),
@@ -89,7 +92,8 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
     carregarTudo();
     const interval = setInterval(carregarTudo, 8000);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodo]);
 
   // Pisca o painel a cada evento em tempo real — sinal periférico de mudança.
   useEffect(() => {
@@ -149,7 +153,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
   async function exportarCsv() {
     setExportandoCsv(true);
     try {
-      await exportarBriefingZip({ sessoes, fila, metrics });
+      await exportarBriefingZip({ fila, metrics, periodo });
     } finally {
       setExportandoCsv(false);
     }
@@ -214,6 +218,8 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
             metaTransbordo={
               configuracoes.find((c) => c.chave === "meta_transbordo_pct")?.valor ?? 25
             }
+            periodo={periodo}
+            onPeriodoChange={setPeriodo}
           />
         )}
 

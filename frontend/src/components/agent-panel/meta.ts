@@ -154,3 +154,26 @@ export function tomDaSessao(ultimaIntencao: any): string | null {
   if (ultimaIntencao && typeof ultimaIntencao === "object") return ultimaIntencao.tom_emocional || null;
   return null;
 }
+
+// ---- Período (filtro de data da Visão geral) -------------------------------
+export interface Periodo {
+  desde: string; // YYYY-MM-DD
+  ate: string; // YYYY-MM-DD
+}
+
+function formatarISO(d: Date): string {
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
+}
+
+// Default do filtro: o mês corrente inteiro (dia 1 até o último dia), não só
+// "início do mês até hoje" — reflete o período de apuração mensal mesmo
+// contando os dias que ainda vão acontecer.
+export function periodoPadrao(): Periodo {
+  const agora = new Date();
+  const inicio = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  const fim = new Date(agora.getFullYear(), agora.getMonth() + 1, 0);
+  return { desde: formatarISO(inicio), ate: formatarISO(fim) };
+}

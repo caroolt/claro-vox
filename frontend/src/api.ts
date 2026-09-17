@@ -91,7 +91,8 @@ export const civ = {
   handoffAssumir: (id: string) => req<any>(`${CIV_URL}/v1/handoff/${id}/assumir`, { method: "POST" }),
   handoffEncerrar: (id: string) => req<any>(`${CIV_URL}/v1/handoff/${id}/encerrar`, { method: "POST" }),
   knowledge: () => req<KnowledgeItem[]>(`${CIV_URL}/v1/knowledge`),
-  metrics: () => req<Metrics>(`${CIV_URL}/v1/metrics`),
+  metrics: (desde?: string, ate?: string) =>
+    req<Metrics>(`${CIV_URL}/v1/metrics${desde && ate ? `?desde=${desde}&ate=${ate}` : ""}`),
   // Log de ações sensíveis (login, MFA, CRUD de usuários, exclusão LGPD,
   // export de transcript etc.) — card de auditoria da Visão geral (admin).
   auditoria: () => req<AuditoriaEntry[]>(`${CIV_URL}/v1/auditoria`),

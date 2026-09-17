@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Gauge, MessageSquare, Radio, ScrollText, Smile } from "lucide-react";
+import { ArrowRightLeft, MessageSquare, Radio, ScrollText, ShieldAlert, Smile } from "lucide-react";
 import type { AuditoriaEntry, Metrics } from "../../types";
 import { CAT_HEX, DonutChart, Meter, RadialMeter, RankedBars, STATUS_HEX } from "../charts";
 import {
@@ -7,8 +7,10 @@ import {
   ESTADO_META,
   ESTADO_ORDEM,
   montarSegmentos,
+  periodoPadrao,
   TOM_META,
   TOM_ORDEM,
+  type Periodo,
 } from "./meta";
 import { KpiCard } from "./ui";
 
@@ -19,6 +21,8 @@ export function VisaoGeralTab({
   onEstadoClick,
   auditoria,
   metaTransbordo,
+  periodo,
+  onPeriodoChange,
 }: {
   metrics: Metrics | null;
   sessoesAtivas: number;
@@ -28,10 +32,24 @@ export function VisaoGeralTab({
   // Meta (%) configurável na aba "Configurações" — 25 é só o valor
   // inicial de fallback antes da configuração carregar.
   metaTransbordo?: number;
+  periodo: Periodo;
+  onPeriodoChange: (periodo: Periodo) => void;
 }) {
   const META_TRANSBORDO = metaTransbordo ?? 25;
+  const padrao = periodoPadrao();
+  const noPadrao = periodo.desde === padrao.desde && periodo.ate === padrao.ate;
+
+  const filtroPeriodo = (
+    <FiltroPeriodo periodo={periodo} padrao={padrao} noPadrao={noPadrao} onChange={onPeriodoChange} />
+  );
+
   if (!metrics) {
-    return <p className="text-sm text-gray-400">Carregando indicadores…</p>;
+    return (
+      <div className="space-y-5">
+        {filtroPeriodo}
+        <p className="text-sm text-gray-400">Carregando indicadores…</p>
+      </div>
+    );
   }
 
   const segmentosEstado = montarSegmentos(
@@ -54,8 +72,12 @@ export function VisaoGeralTab({
   const acimaDaMeta = metrics.taxa_transbordo_pct > META_TRANSBORDO;
   const totalAvaliacoes = metrics.nps.ia.respostas + metrics.nps.atendente.respostas;
 
+  const acimaDoEsperadoFraude = metrics.taxa_fraude_pct > 0;
+
   return (
     <div className={`space-y-5 ${flash ? "vox-flash" : ""}`}>
+      {filtroPeriodo}
+
       <section>
         <SecaoRotulo>Atendimento agora</SecaoRotulo>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -76,10 +98,11 @@ export function VisaoGeralTab({
             icone={MessageSquare}
           />
           <KpiCard
-            label="Disponibilidade (SLO)"
-            value={`${metrics.disponibilidade_slo_pct}%`}
-            sub={`p95 alvo ${metrics.latencia_p95_alvo_ms} ms`}
-            icone={Gauge}
+            label="% de fraude"
+            value={`${metrics.taxa_fraude_pct}%`}
+            sub={`${metrics.total_sessoes_fraude}/${metrics.total_sessoes} sessões com alerta ativo`}
+            destaque={acimaDoEsperadoFraude}
+            icone={ShieldAlert}
           />
         </div>
       </section>
@@ -186,6 +209,49 @@ export function VisaoGeralTab({
           )}
         </div>
       </section>
+    </div>
+  );
+}
+
+function FiltroPeriodo({
+  periodo,
+  padrao,
+  noPadrao,
+  onChange,
+}: {
+  periodo: Periodo;
+  padrao: Periodo;
+  noPadrao: boolean;
+  onChange: (periodo: Periodo) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Período</span>
+      <input
+        type="date"
+        value={periodo.desde}
+        max={periodo.ate}
+        onChange={(e) => onChange({ ...periodo, desde: e.target.value })}
+        title="De"
+        className="rounded-lg border border-gray-300 py-1.5 px-2 text-xs text-gray-600 focus:border-claro-red focus:outline-none"
+      />
+      <span className="text-xs text-gray-400">até</span>
+      <input
+        type="date"
+        value={periodo.ate}
+        min={periodo.desde}
+        onChange={(e) => onChange({ ...periodo, ate: e.target.value })}
+        title="Até"
+        className="rounded-lg border border-gray-300 py-1.5 px-2 text-xs text-gray-600 focus:border-claro-red focus:outline-none"
+      />
+      {!noPadrao && (
+        <button
+          onClick={() => onChange(padrao)}
+          className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs text-gray-500 hover:border-claro-red hover:text-claro-red"
+        >
+          Mês corrente
+        </button>
+      )}
     </div>
   );
 }
