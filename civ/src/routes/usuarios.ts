@@ -1,8 +1,10 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool, audit } from "../db";
 import { h } from "../asyncHandler";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { gerarSegredoMfa, hashSenha, Role } from "../auth";
+import { validateBody } from "../validate";
+import { gerarSegredoMfa, hashSenha } from "../auth";
 
 export const usuariosRouter = Router();
 
@@ -12,9 +14,23 @@ usuariosRouter.use(requireAuth, requireRole("admin"));
 
 const CAMPOS_PUBLICOS = "id, nome, email, role, ativo, mfa_ativado, criado_em";
 
-function validarRole(role: unknown): role is Role {
-  return role === "admin" || role === "atendente";
-}
+const roleSchema = z.enum(["admin", "atendente"], { errorMap: () => ({ message: "role deve ser 'admin' ou 'atendente'" }) });
+
+const criarUsuarioSchema = z.object({
+  nome: z.string().trim().min(1, "nome é obrigatório"),
+  email: z.string().trim().email("email inválido"),
+  senha: z.string().min(8, "senha deve ter ao menos 8 caracteres"),
+  role: roleSchema,
+});
+
+const atualizarUsuarioSchema = z.object({
+  nome: z.string().trim().min(1).optional(),
+  email: z.string().trim().email("email inválido").optional(),
+  role: roleSchema.optional(),
+  ativo: z.boolean().optional(),
+  senha: z.string().min(8, "senha deve ter ao menos 8 caracteres").optional(),
+  resetar_mfa: z.boolean().optional(),
+});
 
 // GET /v1/usuarios — lista todos os usuários (nunca devolve senha_hash/mfa_secret)
 usuariosRouter.get("/", h(async (_req, res) => {
@@ -24,15 +40,10 @@ usuariosRouter.get("/", h(async (_req, res) => {
 
 // POST /v1/usuarios — cria um novo atendente ou admin. MFA começa desativado
 // — o próprio usuário configura o app autenticador no primeiro login.
-usuariosRouter.post("/", h(async (req, res) => {
-  const { nome, email, senha, role } = req.body || {};
-  if (!nome || !email || !senha || !role) {
-    return res.status(400).json({ erro: "nome, email, senha e role são obrigatórios" });
-  }
-  if (!validarRole(role)) return res.status(400).json({ erro: "role deve ser 'admin' ou 'atendente'" });
-  if (String(senha).length < 8) return res.status(400).json({ erro: "senha deve ter ao menos 8 caracteres" });
+usuariosRouter.post("/", validateBody(criarUsuarioSchema), h(async (req, res) => {
+  const { nome, email, senha, role } = req.body;
 
-  const emailNormalizado = String(email).toLowerCase().trim();
+  const emailNormalizado = email.toLowerCase().trim();
   const existente = await pool.query("SELECT id FROM usuario WHERE email = $1", [emailNormalizado]);
   if (existente.rows.length) return res.status(409).json({ erro: "já existe um usuário com esse e-mail" });
 
@@ -49,16 +60,13 @@ usuariosRouter.post("/", h(async (req, res) => {
 
 // PUT /v1/usuarios/:id — atualiza dados, troca senha e/ou reseta o MFA
 // (obriga a reconfigurar o app autenticador no próximo login).
-usuariosRouter.put("/:id", h(async (req, res) => {
+usuariosRouter.put("/:id", validateBody(atualizarUsuarioSchema), h(async (req, res) => {
   const { id } = req.params;
-  const { nome, email, role, ativo, senha, resetar_mfa } = req.body || {};
+  const { nome, email, role, ativo, senha, resetar_mfa } = req.body;
 
   const atual = await pool.query("SELECT * FROM usuario WHERE id = $1", [id]);
   if (!atual.rows.length) return res.status(404).json({ erro: "usuário não encontrado" });
 
-  if (role !== undefined && !validarRole(role)) {
-    return res.status(400).json({ erro: "role deve ser 'admin' ou 'atendente'" });
-  }
   if (ativo === false && id === req.usuario!.sub) {
     return res.status(400).json({ erro: "não é possível desativar a própria conta" });
   }
@@ -71,11 +79,10 @@ usuariosRouter.put("/:id", h(async (req, res) => {
   };
 
   if (nome !== undefined) set("nome", nome);
-  if (email !== undefined) set("email", String(email).toLowerCase().trim());
+  if (email !== undefined) set("email", email.toLowerCase().trim());
   if (role !== undefined) set("role", role);
   if (ativo !== undefined) set("ativo", !!ativo);
   if (senha) {
-    if (String(senha).length < 8) return res.status(400).json({ erro: "senha deve ter ao menos 8 caracteres" });
     set("senha_hash", await hashSenha(senha));
   }
   if (resetar_mfa) {

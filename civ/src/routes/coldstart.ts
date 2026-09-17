@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool, audit } from "../db";
 import { hashCpf, maskCpf } from "../crypto";
 import { getOrCreateCanal, gerarProtocolo } from "../helpers";
@@ -7,8 +8,29 @@ import { broadcast } from "../ws";
 import { h } from "../asyncHandler";
 import { nomesConferem } from "../identidade";
 import { acionarHandoff } from "./handoff";
+import { validateBody } from "../validate";
 
 export const coldstartRouter = Router();
+
+const startSchema = z.object({
+  canal: z.string().trim().min(1, "canal é obrigatório"),
+  canal_conversa_id: z.string().trim().min(1, "canal_conversa_id é obrigatório"),
+  mensagem_inicial: z.string().trim().min(1).optional(),
+  dispositivo_id: z.string().trim().min(1).optional(),
+  ip_origem: z.string().trim().min(1).optional(),
+});
+
+const answerSchema = z.object({
+  sessao_id: z.string().trim().min(1, "sessao_id é obrigatório"),
+  resposta: z.string().trim().min(1, "resposta é obrigatória"),
+});
+
+const reconhecerSchema = z.object({
+  canal: z.string().trim().min(1, "canal é obrigatório"),
+  cpf: z.string().trim().min(1, "cpf é obrigatório"),
+  dispositivo_id: z.string().trim().min(1).optional(),
+  ip_origem: z.string().trim().min(1).optional(),
+});
 
 // Rascunhos em memória do fluxo de Cold Start em andamento (RF010).
 // Não precisa ser durável: se o processo reiniciar no meio do fluxo,
@@ -18,11 +40,8 @@ type Draft = { canal: string; canalConversaId: string; jaCliente?: boolean; nome
 const drafts = new Map<string, Draft>();
 
 // -------- 1) Início do Cold Start (cliente novo, sem sessão) --------
-coldstartRouter.post("/start", h(async (req, res) => {
-  const { canal, canal_conversa_id, mensagem_inicial, dispositivo_id, ip_origem } = req.body || {};
-  if (!canal || !canal_conversa_id) {
-    return res.status(400).json({ erro: "canal e canal_conversa_id são obrigatórios" });
-  }
+coldstartRouter.post("/start", validateBody(startSchema), h(async (req, res) => {
+  const { canal, canal_conversa_id, mensagem_inicial, dispositivo_id, ip_origem } = req.body;
   const canalId = await getOrCreateCanal(canal);
   // dispositivo_id/ip_origem: sinais cross-identidade da camada de
   // detecção de fraude (Regra B) — ligam clientes de CPFs diferentes que
@@ -54,8 +73,8 @@ coldstartRouter.post("/start", h(async (req, res) => {
 }));
 
 // -------- 2) Respostas do Cold Start, uma pergunta por vez --------
-coldstartRouter.post("/answer", h(async (req, res) => {
-  const { sessao_id, resposta } = req.body || {};
+coldstartRouter.post("/answer", validateBody(answerSchema), h(async (req, res) => {
+  const { sessao_id, resposta } = req.body;
   const draft = drafts.get(sessao_id);
   if (!draft) return res.status(404).json({ erro: "sessão de Cold Start não encontrada ou já concluída" });
 
@@ -195,9 +214,8 @@ coldstartRouter.post("/answer", h(async (req, res) => {
 }));
 
 // -------- 3) Reconhecimento automático ao trocar de canal (RF004) --------
-coldstartRouter.post("/reconhecer", h(async (req, res) => {
-  const { canal, cpf, dispositivo_id, ip_origem } = req.body || {};
-  if (!canal || !cpf) return res.status(400).json({ erro: "canal e cpf são obrigatórios" });
+coldstartRouter.post("/reconhecer", validateBody(reconhecerSchema), h(async (req, res) => {
+  const { canal, cpf, dispositivo_id, ip_origem } = req.body;
 
   const cpfHash = hashCpf(cpf);
   const clienteRes = await pool.query("SELECT * FROM cliente WHERE cpf_hash = $1", [cpfHash]);

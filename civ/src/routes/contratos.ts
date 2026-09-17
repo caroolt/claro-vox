@@ -1,13 +1,23 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool, audit } from "../db";
 import { hashCpf } from "../crypto";
 import { h } from "../asyncHandler";
 import { nomesConferem } from "../identidade";
 import { broadcast } from "../ws";
+import { validateBody } from "../validate";
 
 export const contratosRouter = Router();
 
-const TIPOS_PLANO = ["pre-pago", "controle", "pos-pago"];
+const TIPOS_PLANO = ["pre-pago", "controle", "pos-pago"] as const;
+
+const contratoSchema = z.object({
+  sessao_id: z.string().trim().min(1, "sessao_id é obrigatório"),
+  tipo_plano: z.enum(TIPOS_PLANO, { errorMap: () => ({ message: `tipo_plano deve ser um de: ${TIPOS_PLANO.join(", ")}` }) }),
+  nome: z.string().trim().min(1, "nome é obrigatório"),
+  data_nascimento: z.string().trim().min(1, "data_nascimento é obrigatório"),
+  cpf: z.string().trim().min(1, "cpf é obrigatório"),
+});
 
 // POST /v1/contratos — finaliza a contratação simulada de um plano
 // (pré-pago/controle/pós). Chamada internamente pelo Orquestrador ao fim do
@@ -18,14 +28,8 @@ const TIPOS_PLANO = ["pre-pago", "controle", "pos-pago"];
 // (simula a verificação de identidade de uma contratação real).
 // Cliente novo/prospecção (sem CPF ainda): os dados digitados completam o
 // cadastro e o promovem para cliente ativo (KYC simplificado do MVP).
-contratosRouter.post("/", h(async (req, res) => {
-  const { sessao_id, tipo_plano, nome, data_nascimento, cpf } = req.body || {};
-  if (!sessao_id || !tipo_plano || !nome || !data_nascimento || !cpf) {
-    return res.status(400).json({ erro: "sessao_id, tipo_plano, nome, data_nascimento e cpf são obrigatórios" });
-  }
-  if (!TIPOS_PLANO.includes(tipo_plano)) {
-    return res.status(400).json({ erro: `tipo_plano deve ser um de: ${TIPOS_PLANO.join(", ")}` });
-  }
+contratosRouter.post("/", validateBody(contratoSchema), h(async (req, res) => {
+  const { sessao_id, tipo_plano, nome, data_nascimento, cpf } = req.body;
 
   const sessaoRes = await pool.query("SELECT * FROM sessao WHERE id = $1", [sessao_id]);
   if (!sessaoRes.rows.length) return res.status(404).json({ erro: "sessão não encontrada" });

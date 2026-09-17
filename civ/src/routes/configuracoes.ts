@@ -1,9 +1,15 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool, audit } from "../db";
 import { h } from "../asyncHandler";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { validateBody } from "../validate";
 
 export const configuracoesRouter = Router();
+
+const atualizarConfigSchema = z.object({
+  valor: z.number({ invalid_type_error: "valor deve ser um número" }).finite("valor deve ser um número"),
+});
 
 // Parâmetros operacionais — meta de transbordo e limiares do motor de
 // detecção de fraude, em vez de constantes fixas no código (ver
@@ -23,12 +29,9 @@ configuracoesRouter.get("/", h(async (_req, res) => {
 
 // PUT /v1/configuracoes/:chave — atualiza um parâmetro existente. Não cria
 // chaves novas por aqui (evita configurações "soltas" sem uso no código).
-configuracoesRouter.put("/:chave", requireRole("admin"), h(async (req, res) => {
+configuracoesRouter.put("/:chave", requireRole("admin"), validateBody(atualizarConfigSchema), h(async (req, res) => {
   const { chave } = req.params;
-  const { valor } = req.body || {};
-  if (typeof valor !== "number" || !Number.isFinite(valor)) {
-    return res.status(400).json({ erro: "valor deve ser um número" });
-  }
+  const { valor } = req.body;
 
   const atual = await pool.query("SELECT chave FROM configuracao WHERE chave = $1", [chave]);
   if (!atual.rows.length) return res.status(404).json({ erro: "parâmetro de configuração não encontrado" });

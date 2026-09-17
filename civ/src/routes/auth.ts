@@ -1,7 +1,9 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool, audit } from "../db";
 import { h } from "../asyncHandler";
 import { requireAuth } from "../middleware/auth";
+import { validateBody } from "../validate";
 import {
   compararSenha,
   emitirLoginToken,
@@ -14,12 +16,21 @@ import {
 
 export const authRouter = Router();
 
+const loginSchema = z.object({
+  email: z.string().trim().min(1, "email é obrigatório"),
+  senha: z.string().min(1, "senha é obrigatória"),
+});
+
+const mfaSchema = z.object({
+  login_token: z.string().min(1, "login_token é obrigatório"),
+  codigo: z.string().min(1, "codigo é obrigatório"),
+});
+
 // POST /v1/auth/login — 1ª etapa: e-mail + senha. Nunca devolve um token de
 // sessão diretamente; sempre exige o código MFA na 2ª etapa (POST
 // /v1/auth/mfa/verificar), mesmo para quem já configurou o autenticador.
-authRouter.post("/login", h(async (req, res) => {
-  const { email, senha } = req.body || {};
-  if (!email || !senha) return res.status(400).json({ erro: "email e senha são obrigatórios" });
+authRouter.post("/login", validateBody(loginSchema), h(async (req, res) => {
+  const { email, senha } = req.body;
 
   const result = await pool.query(
     "SELECT * FROM usuario WHERE email = $1 AND ativo = true",
@@ -51,9 +62,8 @@ authRouter.post("/login", h(async (req, res) => {
 // POST /v1/auth/mfa/verificar — 2ª etapa: código de 6 dígitos do app
 // autenticador (TOTP). Na primeira vez, um código válido também ativa o MFA
 // da conta (finaliza a configuração iniciada no /login).
-authRouter.post("/mfa/verificar", h(async (req, res) => {
-  const { login_token, codigo } = req.body || {};
-  if (!login_token || !codigo) return res.status(400).json({ erro: "login_token e codigo são obrigatórios" });
+authRouter.post("/mfa/verificar", validateBody(mfaSchema), h(async (req, res) => {
+  const { login_token, codigo } = req.body;
 
   let usuarioId: string;
   try {

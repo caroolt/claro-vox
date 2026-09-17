@@ -1,9 +1,16 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool } from "../db";
 import { h } from "../asyncHandler";
 import { requireAuth } from "../middleware/auth";
+import { validateBody } from "../validate";
 
 export const knowledgeRouter = Router();
+
+const searchSchema = z.object({
+  embedding: z.array(z.number(), { invalid_type_error: "embedding (array) é obrigatório" }),
+  limite: z.number().int().positive().optional(),
+});
 
 // GET /v1/knowledge — painel "Base de Conhecimento (RAG)" do Vox Briefing (leitura)
 knowledgeRouter.get("/", requireAuth, h(async (_req, res) => {
@@ -14,9 +21,8 @@ knowledgeRouter.get("/", requireAuth, h(async (_req, res) => {
 // POST /v1/knowledge/search — usado pelo Orquestrador para a busca vetorial
 // via pgvector (distância de cosseno). O embedding é calculado no
 // Orquestrador (Python) e enviado já pronto.
-knowledgeRouter.post("/search", h(async (req, res) => {
-  const { embedding, limite } = req.body || {};
-  if (!Array.isArray(embedding)) return res.status(400).json({ erro: "embedding (array) é obrigatório" });
+knowledgeRouter.post("/search", validateBody(searchSchema), h(async (req, res) => {
+  const { embedding, limite } = req.body;
   const vetor = `[${embedding.join(",")}]`;
   const result = await pool.query(
     `SELECT id, titulo, conteudo, categoria, embedding <-> $1 AS distancia

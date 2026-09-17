@@ -1,10 +1,17 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool, audit } from "../db";
 import { hashCpf } from "../crypto";
 import { h } from "../asyncHandler";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { validateBody } from "../validate";
 
 export const clientesRouter = Router();
+
+const bloqueioSchema = z.object({
+  bloqueado: z.boolean({ invalid_type_error: "bloqueado deve ser true ou false" }),
+  motivo: z.string().trim().max(500).optional(),
+});
 
 // Marcador de exclusão LGPD (art. 18) — também usado em fraude.ts pra
 // excluir clientes anonimizados do motor de detecção (não faz sentido
@@ -268,10 +275,9 @@ clientesRouter.get("/:id", requireAuth, h(async (req, res) => {
 // apagar nada do histórico, ao contrário da exclusão LGPD abaixo. Um
 // cliente bloqueado não consegue confirmar novas contratações (ver
 // checagem em POST /v1/contratos).
-clientesRouter.put("/:id/bloqueio", requireAuth, requireRole("admin"), h(async (req, res) => {
+clientesRouter.put("/:id/bloqueio", requireAuth, requireRole("admin"), validateBody(bloqueioSchema), h(async (req, res) => {
   const { id } = req.params;
-  const { bloqueado, motivo } = req.body || {};
-  if (typeof bloqueado !== "boolean") return res.status(400).json({ erro: "bloqueado deve ser true ou false" });
+  const { bloqueado, motivo } = req.body;
 
   const result = await pool.query(
     `UPDATE cliente

@@ -1,13 +1,25 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool, audit } from "../db";
 import { h } from "../asyncHandler";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { validateBody } from "../validate";
 import { extrairPerfilEstilo, similaridadeGeral, similaridadePorFeature, PerfilEstilo } from "../stylometria";
 import { NOME_ANONIMIZADO } from "./clientes";
 import { broadcast } from "../ws";
 import { localizarIp, formatarLocalizacao } from "../geoip";
 
 export const fraudeRouter = Router();
+
+const atualizarAlertaSchema = z
+  .object({
+    status: z.enum(["revisado", "descartado"], { errorMap: () => ({ message: "status deve ser 'revisado' ou 'descartado'" }) }),
+    nota: z.string().trim().optional(),
+  })
+  .refine((dados) => dados.status !== "revisado" || !!dados.nota, {
+    message: "nota é obrigatória para marcar como revisado — descreva o que foi investigado",
+    path: ["nota"],
+  });
 
 // Camada de detecção de fraude cross-canal, exclusiva do admin (mesmo RBAC
 // de Métricas/Atendentes). Três regras, três níveis de confiança — nunca um
@@ -271,18 +283,12 @@ fraudeRouter.get("/alertas/historico", h(async (_req, res) => {
 // nunca um clique sem justificativa, já que essa decisão sai do alerta em
 // aberto e vira histórico. Fica registrado em auditoria — parte da trilha
 // auditável (XAI).
-fraudeRouter.put("/alertas/:id", h(async (req, res) => {
-  const { status, nota } = req.body || {};
-  if (!["revisado", "descartado"].includes(status)) {
-    return res.status(400).json({ erro: "status deve ser 'revisado' ou 'descartado'" });
-  }
-  if (status === "revisado" && !String(nota || "").trim()) {
-    return res.status(400).json({ erro: "nota é obrigatória para marcar como revisado — descreva o que foi investigado" });
-  }
+fraudeRouter.put("/alertas/:id", validateBody(atualizarAlertaSchema), h(async (req, res) => {
+  const { status, nota } = req.body;
   const result = await pool.query(
     `UPDATE alerta_fraude SET status = $1, resolvido_em = now(), resolvido_por = $2, nota_resolucao = $3
      WHERE id = $4 RETURNING id, status`,
-    [status, req.usuario!.email, nota ? String(nota).trim() : null, req.params.id]
+    [status, req.usuario!.email, nota || null, req.params.id]
   );
   if (!result.rows.length) return res.status(404).json({ erro: "alerta não encontrado" });
   await audit(req.usuario!.email, `fraude.alerta.${status}`, req.params.id);

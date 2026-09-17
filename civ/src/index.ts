@@ -19,10 +19,12 @@ import { verificarTimeoutsAtendente } from "./jobs/timeoutAtendente";
 import { rodarDeteccaoFraudePeriodica } from "./jobs/deteccaoFraude";
 import { initWs } from "./ws";
 import { pool, ensureSchema } from "./db";
+import { sanitizarBody } from "./sanitize";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(sanitizarBody);
 
 app.get("/health", async (_req, res) => {
   try {

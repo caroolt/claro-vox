@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool, audit } from "../db";
 import { getOrCreateCanal } from "../helpers";
 import { cacheSessionContext } from "../redisClient";
@@ -7,8 +8,31 @@ import { h } from "../asyncHandler";
 import { scrubTexto } from "../anonimizar";
 import { embed } from "../embedding";
 import { requireAuth } from "../middleware/auth";
+import { validateBody } from "../validate";
 
 export const sessionsRouter = Router();
+
+const fluxoSchema = z.object({
+  fluxo_ativo: z.string().trim().min(1).nullable().optional(),
+  fluxo_dados: z.unknown().optional(),
+});
+
+const mensagemSchema = z.object({
+  remetente: z.enum(["atendente", "cliente", "vox"], {
+    errorMap: () => ({ message: "remetente deve ser 'atendente', 'cliente' ou 'vox'" }),
+  }),
+  canal: z.string().trim().min(1).optional(),
+  conteudo: z.string().trim().min(1, "conteudo é obrigatório"),
+});
+
+const intencaoSchema = z.object({
+  mensagem_id: z.string().trim().min(1).optional(),
+  categoria: z.string().trim().optional(),
+  subcategoria: z.string().trim().optional(),
+  confianca: z.number().optional(),
+  tom_emocional: z.string().trim().optional(),
+  jornada_status: z.string().trim().optional(),
+});
 
 // GET /v1/sessions — lista para o painel "Sessões Ativas" do Vox Briefing
 // (protegida — o Orquestrador não usa esta rota, só o front do painel).
@@ -64,9 +88,9 @@ sessionsRouter.get("/:id/context", h(async (req, res) => {
 // etapa está um fluxo conversacional guiado (ex.: contratação de plano) e
 // os dados já coletados, ou para encerrar o fluxo (fluxo_ativo: null).
 // Pública — mesma natureza de /context e /intencao, uso interno do Orquestrador.
-sessionsRouter.post("/:id/fluxo", h(async (req, res) => {
+sessionsRouter.post("/:id/fluxo", validateBody(fluxoSchema), h(async (req, res) => {
   const { id } = req.params;
-  const { fluxo_ativo, fluxo_dados } = req.body || {};
+  const { fluxo_ativo, fluxo_dados } = req.body;
   const result = await pool.query(
     `UPDATE contexto SET fluxo_ativo = $1, fluxo_dados = $2, atualizado_em = now() WHERE sessao_id = $3 RETURNING *`,
     [fluxo_ativo || null, fluxo_dados ? JSON.stringify(fluxo_dados) : null, id]
@@ -185,10 +209,9 @@ sessionsRouter.get("/:id/suggestions", requireAuth, h(async (req, res) => {
 
 // POST /v1/sessions/:id/messages — usado pelo Orquestrador para registrar
 // a mensagem do cliente e a resposta do Vox
-sessionsRouter.post("/:id/messages", h(async (req, res) => {
+sessionsRouter.post("/:id/messages", validateBody(mensagemSchema), h(async (req, res) => {
   const { id } = req.params;
-  const { remetente, canal, conteudo } = req.body || {};
-  if (!remetente || !conteudo) return res.status(400).json({ erro: "remetente e conteudo são obrigatórios" });
+  const { remetente, canal, conteudo } = req.body;
   const canalId = canal ? await getOrCreateCanal(canal) : null;
   const result = await pool.query(
     `INSERT INTO mensagem (sessao_id, canal_id, remetente, conteudo) VALUES ($1, $2, $3, $4) RETURNING id, timestamp`,
@@ -201,9 +224,9 @@ sessionsRouter.post("/:id/messages", h(async (req, res) => {
 
 // POST /v1/sessions/:id/intencao — o Orquestrador registra a classificação
 // (categoria, subcategoria, confiança, tom emocional) de uma mensagem (RF002, RF008)
-sessionsRouter.post("/:id/intencao", h(async (req, res) => {
+sessionsRouter.post("/:id/intencao", validateBody(intencaoSchema), h(async (req, res) => {
   const { id } = req.params;
-  const { mensagem_id, categoria, subcategoria, confianca, tom_emocional, jornada_status } = req.body || {};
+  const { mensagem_id, categoria, subcategoria, confianca, tom_emocional, jornada_status } = req.body;
   if (mensagem_id) {
     await pool.query(
       `INSERT INTO intencao (mensagem_id, categoria, subcategoria, confianca, tom_emocional) VALUES ($1, $2, $3, $4, $5)`,

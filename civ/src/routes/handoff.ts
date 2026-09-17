@@ -1,10 +1,20 @@
 import { Router } from "express";
+import { z } from "zod";
 import { pool, audit } from "../db";
 import { broadcast } from "../ws";
 import { h } from "../asyncHandler";
 import { requireAuth } from "../middleware/auth";
+import { validateBody } from "../validate";
 
 export const handoffRouter = Router();
+
+const acionarHandoffSchema = z.object({
+  sessao_id: z.string().trim().min(1, "sessao_id é obrigatório"),
+  motivo: z.string().trim().min(1, "motivo é obrigatório"),
+  tom_emocional: z.string().trim().min(1).nullable().optional(),
+  resumo_jornada: z.string().trim().optional(),
+  sugestao_resolucao: z.string().trim().optional(),
+});
 
 // Cria o briefing + registro de handoff e marca a sessão como
 // TRANSBORDO_PENDENTE — extraído da rota abaixo pra ser reaproveitado por
@@ -44,9 +54,8 @@ export async function acionarHandoff(
 
 // POST /v1/handoff — acionado pelo Orquestrador quando não resolve sozinho
 // (RF007, RF009) — pública, chamada internamente, sem usuário logado.
-handoffRouter.post("/", h(async (req, res) => {
-  const { sessao_id, motivo, tom_emocional, resumo_jornada, sugestao_resolucao } = req.body || {};
-  if (!sessao_id || !motivo) return res.status(400).json({ erro: "sessao_id e motivo são obrigatórios" });
+handoffRouter.post("/", validateBody(acionarHandoffSchema), h(async (req, res) => {
+  const { sessao_id, motivo, tom_emocional, resumo_jornada, sugestao_resolucao } = req.body;
 
   const briefing = await acionarHandoff(sessao_id, motivo, tom_emocional, resumo_jornada, sugestao_resolucao, "orchestrator");
 

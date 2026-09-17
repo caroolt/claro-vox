@@ -18,6 +18,7 @@ import type {
   Usuario,
   UsuarioAdmin,
 } from "./types";
+import { sanitizeInput } from "./sanitize";
 
 export const CIV_URL = import.meta.env.VITE_CIV_URL || "http://localhost:4001";
 export const ORCH_URL = import.meta.env.VITE_ORCH_URL || "http://localhost:4002";
@@ -38,14 +39,19 @@ export function onAuthExpirado(callback: () => void) {
   onNaoAutorizado = callback;
 }
 
-async function req<T>(url: string, opts?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json", ...(opts?.headers as any) };
+type ReqOpts = { method?: string; headers?: Record<string, string>; body?: unknown };
+
+async function req<T>(url: string, opts?: ReqOpts): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...opts?.headers };
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  const resp = await fetch(url, { ...opts, headers });
+  // Todo body sai sanitizado daqui — único ponto por onde qualquer input do
+  // usuário passa antes de ir para o backend (ver sanitize.ts).
+  const body = opts?.body !== undefined ? JSON.stringify(sanitizeInput(opts.body)) : undefined;
+  const resp = await fetch(url, { method: opts?.method, headers, body });
   if (resp.status === 401 && authToken) onNaoAutorizado?.();
   if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    throw new Error(`${resp.status} ${resp.statusText}: ${body}`);
+    const texto = await resp.text().catch(() => "");
+    throw new Error(`${resp.status} ${resp.statusText}: ${texto}`);
   }
   return resp.json();
 }
@@ -55,22 +61,22 @@ export const orchestrator = {
   coldstartStart: (canal: string, canal_conversa_id: string, mensagem_inicial?: string, dispositivo_id?: string) =>
     req<{ sessao_id: string; estado: string; proxima_pergunta: string }>(
       `${ORCH_URL}/v1/orchestrator/coldstart/start`,
-      { method: "POST", body: JSON.stringify({ canal, canal_conversa_id, mensagem_inicial, dispositivo_id }) }
+      { method: "POST", body: { canal, canal_conversa_id, mensagem_inicial, dispositivo_id } }
     ),
   coldstartAnswer: (sessao_id: string, resposta: string) =>
     req<any>(`${ORCH_URL}/v1/orchestrator/coldstart/answer`, {
       method: "POST",
-      body: JSON.stringify({ sessao_id, resposta }),
+      body: { sessao_id, resposta },
     }),
   coldstartReconhecer: (canal: string, cpf: string, dispositivo_id?: string) =>
     req<any>(`${ORCH_URL}/v1/orchestrator/coldstart/reconhecer`, {
       method: "POST",
-      body: JSON.stringify({ canal, cpf, dispositivo_id }),
+      body: { canal, cpf, dispositivo_id },
     }),
   message: (sessao_id: string, canal: string, conteudo: string) =>
     req<any>(`${ORCH_URL}/v1/orchestrator/message`, {
       method: "POST",
-      body: JSON.stringify({ sessao_id, canal, conteudo }),
+      body: { sessao_id, canal, conteudo },
     }),
   health: () => req<any>(`${ORCH_URL}/health`),
 };
@@ -121,7 +127,7 @@ export const civ = {
   bloquearCliente: (id: string, bloqueado: boolean, motivo?: string) =>
     req<{ id: string; nome: string; bloqueado: boolean }>(`${CIV_URL}/v1/clientes/${id}/bloqueio`, {
       method: "PUT",
-      body: JSON.stringify({ bloqueado, motivo }),
+      body: { bloqueado, motivo },
     }),
   // Registra a nota de NPS enviada pelo cliente no simulador — alvo "ia"
   // (junto do transbordo) ou "atendente" (ao encerrar o atendimento humano).
@@ -135,7 +141,7 @@ export const civ = {
   }) =>
     req<{ ok: boolean; nps_id: string }>(`${CIV_URL}/v1/nps`, {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: payload,
     }),
   // Grava uma mensagem diretamente na sessão — usado pelo atendente humano
   // (remetente "atendente") no chat do painel, e pelo cliente quando a
@@ -143,18 +149,18 @@ export const civ = {
   enviarMensagem: (sessao_id: string, remetente: "atendente" | "cliente", canal: string, conteudo: string) =>
     req<{ mensagem_id: string; timestamp: string }>(`${CIV_URL}/v1/sessions/${sessao_id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ remetente, canal, conteudo }),
+      body: { remetente, canal, conteudo },
     }),
 };
 
 // -------- Autenticação do Painel do Atendente (login + MFA) --------
 export const auth = {
   login: (email: string, senha: string) =>
-    req<LoginIniciado>(`${CIV_URL}/v1/auth/login`, { method: "POST", body: JSON.stringify({ email, senha }) }),
+    req<LoginIniciado>(`${CIV_URL}/v1/auth/login`, { method: "POST", body: { email, senha } }),
   mfaVerificar: (login_token: string, codigo: string) =>
     req<LoginConcluido>(`${CIV_URL}/v1/auth/mfa/verificar`, {
       method: "POST",
-      body: JSON.stringify({ login_token, codigo }),
+      body: { login_token, codigo },
     }),
   me: () => req<Usuario>(`${CIV_URL}/v1/auth/me`),
 };
@@ -163,7 +169,7 @@ export const auth = {
 export const usuarios = {
   listar: () => req<UsuarioAdmin[]>(`${CIV_URL}/v1/usuarios`),
   criar: (payload: { nome: string; email: string; senha: string; role: "admin" | "atendente" }) =>
-    req<UsuarioAdmin>(`${CIV_URL}/v1/usuarios`, { method: "POST", body: JSON.stringify(payload) }),
+    req<UsuarioAdmin>(`${CIV_URL}/v1/usuarios`, { method: "POST", body: payload }),
   atualizar: (
     id: string,
     payload: Partial<{
@@ -174,7 +180,7 @@ export const usuarios = {
       senha: string;
       resetar_mfa: boolean;
     }>
-  ) => req<UsuarioAdmin>(`${CIV_URL}/v1/usuarios/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  ) => req<UsuarioAdmin>(`${CIV_URL}/v1/usuarios/${id}`, { method: "PUT", body: payload }),
   excluir: (id: string) => req<{ ok: boolean }>(`${CIV_URL}/v1/usuarios/${id}`, { method: "DELETE" }),
 };
 
@@ -182,7 +188,7 @@ export const usuarios = {
 export const configuracoes = {
   listar: () => req<Configuracao[]>(`${CIV_URL}/v1/configuracoes`),
   atualizar: (chave: string, valor: number) =>
-    req<Configuracao>(`${CIV_URL}/v1/configuracoes/${chave}`, { method: "PUT", body: JSON.stringify({ valor }) }),
+    req<Configuracao>(`${CIV_URL}/v1/configuracoes/${chave}`, { method: "PUT", body: { valor } }),
 };
 
 // -------- Detecção de fraude cross-canal (aba "Fraude", exclusiva do admin) --------
@@ -193,7 +199,7 @@ export const fraude = {
   atualizarAlerta: (id: string, status: "revisado" | "descartado", nota?: string) =>
     req<{ id: string; status: string }>(`${CIV_URL}/v1/fraude/alertas/${id}`, {
       method: "PUT",
-      body: JSON.stringify({ status, nota }),
+      body: { status, nota },
     }),
 };
 
