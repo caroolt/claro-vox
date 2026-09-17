@@ -9,7 +9,7 @@ export const knowledgeRouter = Router();
 
 const searchSchema = z.object({
   embedding: z.array(z.number(), { invalid_type_error: "embedding (array) é obrigatório" }),
-  limite: z.number().int().positive().optional(),
+  limite: z.number().int().positive().nullable().optional(),
 });
 
 // GET /v1/knowledge — painel "Base de Conhecimento (RAG)" do Vox Briefing (leitura)

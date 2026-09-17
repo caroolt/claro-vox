@@ -12,12 +12,17 @@ import { validateBody } from "../validate";
 
 export const coldstartRouter = Router();
 
+// .nullable() além de .optional() em todo campo opcional daqui pra baixo: o
+// Orquestrador (Python/FastAPI) manda `Optional[str] = None` como `null`
+// explícito no JSON, não como chave ausente — diferente do front (JS), onde
+// `undefined` é omitido pelo JSON.stringify. Sem aceitar os dois, o
+// Orquestrador quebra com "Expected string, received null".
 const startSchema = z.object({
   canal: z.string().trim().min(1, "canal é obrigatório"),
   canal_conversa_id: z.string().trim().min(1, "canal_conversa_id é obrigatório"),
-  mensagem_inicial: z.string().trim().min(1).optional(),
-  dispositivo_id: z.string().trim().min(1).optional(),
-  ip_origem: z.string().trim().min(1).optional(),
+  mensagem_inicial: z.string().trim().min(1).nullable().optional(),
+  dispositivo_id: z.string().trim().min(1).nullable().optional(),
+  ip_origem: z.string().trim().min(1).nullable().optional(),
 });
 
 const answerSchema = z.object({
@@ -28,8 +33,8 @@ const answerSchema = z.object({
 const reconhecerSchema = z.object({
   canal: z.string().trim().min(1, "canal é obrigatório"),
   cpf: z.string().trim().min(1, "cpf é obrigatório"),
-  dispositivo_id: z.string().trim().min(1).optional(),
-  ip_origem: z.string().trim().min(1).optional(),
+  dispositivo_id: z.string().trim().min(1).nullable().optional(),
+  ip_origem: z.string().trim().min(1).nullable().optional(),
 });
 
 // Rascunhos em memória do fluxo de Cold Start em andamento (RF010).

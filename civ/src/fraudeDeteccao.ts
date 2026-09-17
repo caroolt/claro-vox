@@ -48,6 +48,11 @@ interface ResultadoRegra {
   // a última rodada — permite escopar a reconciliação por SQL direto (WHERE
   // evidencia->>'valor' = ANY(...)) em vez de carregar todo alerta aberto.
   evidenciaValoresTocados?: string[];
+  // Regra C apenas: pares já abertos, revalidados diretamente (sem passar
+  // pelo bucket) e ainda válidos — ver revalidarAlertasAbertos. Não geram um
+  // novo AlertaGerado (já estão abertos, nada muda), só entram como "ainda
+  // válidos" pra reconciliação não fechá-los à toa.
+  chavesValidasExtras?: Set<string>;
 }
 
 async function obterWatermark(regra: "B_dispositivo_ip" | "C_estilo_escrita"): Promise<Date> {
@@ -264,14 +269,11 @@ async function detectarRegraC(limiar: number): Promise<ResultadoRegra> {
   const agora = new Date();
 
   const mudados = limiarMudou ? null : await clientesComMensagemNovaDesde(watermark);
-  if (!limiarMudou && mudados && !mudados.length) {
-    await avancarWatermark("C_estilo_escrita", agora, limiar);
-    return { gerados: [], chavesAvaliadas: new Set() };
-  }
+  const semNovidade = !limiarMudou && mudados && !mudados.length;
 
-  if (mudados) {
+  if (mudados && mudados.length) {
     for (const clienteId of mudados) await atualizarPerfilCliente(clienteId);
-  } else {
+  } else if (!semNovidade) {
     // Recomputo completo de VEREDITO (não de perfil): garante que todo
     // cliente com mensagens suficientes tenha um perfil persistido, mesmo
     // alguém que nunca tinha sido avaliado antes de atingir o mínimo.
@@ -346,7 +348,49 @@ async function detectarRegraC(limiar: number): Promise<ResultadoRegra> {
   }
 
   await avancarWatermark("C_estilo_escrita", agora, limiar);
-  return { gerados, chavesAvaliadas };
+
+  const revalidacao = await revalidarAlertasAbertos(limiar);
+  revalidacao.chavesAvaliadas.forEach((c) => chavesAvaliadas.add(c));
+
+  return { gerados, chavesAvaliadas, chavesValidasExtras: revalidacao.chavesValidas };
+}
+
+// Revalida DIRETAMENTE (sem depender de vizinhança de balde) todo par que
+// hoje tem um alerta "aberto" da Regra C. Necessário porque o bucketing só
+// descobre pares NOVOS comparando baldes vizinhos — um par cujo alerta já
+// existe (inclusive os gerados pelo motor antigo, antes do bucketing, que
+// comparava todo mundo com todo mundo sem essa restrição) pode nunca mais
+// cair em baldes vizinhos e ainda assim precisar ser fechado se a
+// similaridade real não bate mais com o limiar atual. Custa uma query
+// bounded pelo nº de alertas abertos (que o design mantém pequeno), nunca
+// pelo nº de clientes da base.
+async function revalidarAlertasAbertos(limiar: number): Promise<{ chavesAvaliadas: Set<string>; chavesValidas: Set<string> }> {
+  const abertos = await pool.query(`SELECT clientes_ids FROM alerta_fraude WHERE regra = 'C_estilo_escrita' AND status = 'aberto'`);
+  const chavesAvaliadas = new Set<string>();
+  const chavesValidas = new Set<string>();
+  if (!abertos.rows.length) return { chavesAvaliadas, chavesValidas };
+
+  const idsEnvolvidos = new Set<string>();
+  abertos.rows.forEach((r) => (r.clientes_ids as string[]).forEach((id) => idsEnvolvidos.add(id)));
+  const perfisRes = await pool.query(`SELECT cliente_id, perfil FROM perfil_estilo_cliente WHERE cliente_id = ANY($1::uuid[])`, [
+    [...idsEnvolvidos],
+  ]);
+  const perfilPorId = new Map<string, PerfilEstilo>();
+  perfisRes.rows.forEach((r) => perfilPorId.set(r.cliente_id, r.perfil as PerfilEstilo));
+
+  for (const row of abertos.rows) {
+    const ids: string[] = row.clientes_ids;
+    if (ids.length !== 2) continue;
+    const chave = chaveClientes(ids);
+    chavesAvaliadas.add(chave);
+    const p1 = perfilPorId.get(ids[0]);
+    const p2 = perfilPorId.get(ids[1]);
+    // Perfil sumiu (cliente anonimizado, ou caiu abaixo do mínimo de
+    // mensagens) — inválido, não entra em chavesValidas, será fechado.
+    if (!p1 || !p2) continue;
+    if (similaridadeGeral(p1, p2) >= limiar) chavesValidas.add(chave);
+  }
+  return { chavesAvaliadas, chavesValidas };
 }
 
 async function clientesComMensagemNovaDesde(desde: Date): Promise<string[]> {
@@ -420,13 +464,24 @@ async function upsertAlerta(a: AlertaGerado): Promise<boolean> {
 }
 
 // Agrupa alertas em aberto que citam clientes em comum num único "caso"
-// investigável (união por componentes conexos: dois alertas que citam o
-// mesmo cliente, mesmo que por regras diferentes, pertencem ao mesmo caso).
+// investigável. Só a Regra A/B (evidência determinística) une clientes por
+// componentes conexos — a Regra C (indício fraco de estilo de escrita)
+// NUNCA aumenta sozinha o escopo de um caso, só corrobora quando os DOIS
+// clientes que ela cita já pertencem ao mesmo caso por evidência forte.
+//
+// Sem essa restrição, um alerta fraco vira ponte: A parece com B, B parece
+// com C, C parece com D... e por transitividade tudo vira um único caso
+// gigante com gente sem relação direta nenhuma — inviável de um analista
+// investigar (e contraria a própria natureza da Regra C, que "nunca deve
+// bloquear sozinha, só investigar"). Um alerta fraco cujos dois clientes
+// não têm vínculo forte com mais ninguém vira o seu próprio caso isolado,
+// nunca se funde com outro alerta fraco não relacionado.
+//
 // Recalculado do zero a cada ciclo sobre os alertas ABERTOS — o custo é
 // proporcional ao nº de alertas em aberto (que o próprio design mantém
 // pequeno), nunca ao nº de clientes da base.
 export async function recomputarCasos(): Promise<void> {
-  const abertos = await pool.query(`SELECT id, clientes_ids, caso_id FROM alerta_fraude WHERE status = 'aberto'`);
+  const abertos = await pool.query(`SELECT id, regra, clientes_ids, caso_id FROM alerta_fraude WHERE status = 'aberto'`);
   if (!abertos.rows.length) return;
 
   const pai = new Map<string, string>();
@@ -442,29 +497,53 @@ export async function recomputarCasos(): Promise<void> {
     const rb = raiz(b);
     if (ra !== rb) pai.set(ra, rb);
   }
-  for (const row of abertos.rows) {
+
+  const fortes = abertos.rows.filter((r) => r.regra !== "C_estilo_escrita");
+  const fracos = abertos.rows.filter((r) => r.regra === "C_estilo_escrita");
+
+  for (const row of fortes) {
     const ids: string[] = row.clientes_ids;
     raiz(ids[0]);
     for (let i = 1; i < ids.length; i++) unir(ids[0], ids[i]);
   }
+  const clientesComVinculoForte = new Set<string>();
+  fortes.forEach((r) => (r.clientes_ids as string[]).forEach((id) => clientesComVinculoForte.add(id)));
 
   const alertasPorComponente = new Map<string, typeof abertos.rows>();
-  for (const row of abertos.rows) {
+  for (const row of fortes) {
     const comp = raiz(row.clientes_ids[0]);
     if (!alertasPorComponente.has(comp)) alertasPorComponente.set(comp, []);
     alertasPorComponente.get(comp)!.push(row);
   }
+  for (const row of fracos) {
+    const [a, b] = row.clientes_ids as string[];
+    const corroboraCasoForte = clientesComVinculoForte.has(a) && clientesComVinculoForte.has(b) && raiz(a) === raiz(b);
+    const chave = corroboraCasoForte ? raiz(a) : `isolado:${row.id}`;
+    if (!alertasPorComponente.has(chave)) alertasPorComponente.set(chave, []);
+    alertasPorComponente.get(chave)!.push(row);
+  }
+
+  // Quantos alertas abertos, no total, apontam hoje pra cada caso — usado
+  // abaixo pra só reaproveitar um caso existente quando ele bate EXATAMENTE
+  // com o grupo recém-calculado. Sem essa checagem exata, um grupo que é só
+  // uma FATIA de um caso antigo (ex.: a Regra C parou de unir componentes e
+  // um caso antigo está sendo dividido em vários menores) simplesmente
+  // "herdava" o caso_id antigo, e o resto dos alertas que ficaram pra trás
+  // continuava preso lá — o caso nunca de fato encolhia.
+  const totalPorCasoAtual = new Map<string, number>();
+  abertos.rows.forEach((r) => {
+    if (r.caso_id) totalPorCasoAtual.set(r.caso_id, (totalPorCasoAtual.get(r.caso_id) || 0) + 1);
+  });
 
   for (const alertasDoComponente of alertasPorComponente.values()) {
     const casosExistentes = [...new Set(alertasDoComponente.map((a) => a.caso_id).filter(Boolean))] as string[];
 
     let casoCanonico: string;
-    if (casosExistentes.length === 0) {
-      const novo = await pool.query(`INSERT INTO caso_fraude DEFAULT VALUES RETURNING id`);
-      casoCanonico = novo.rows[0].id;
-    } else if (casosExistentes.length === 1) {
+    if (casosExistentes.length === 1 && totalPorCasoAtual.get(casosExistentes[0]) === alertasDoComponente.length) {
+      // O único caso já existente bate exatamente com este grupo — nada
+      // mudou, mantém (preserva status/atribuição de analista).
       casoCanonico = casosExistentes[0];
-    } else {
+    } else if (casosExistentes.length > 1) {
       // Duas investigações separadas se fundiram (um alerta novo liga
       // clientes que antes só apareciam em casos distintos) — prioriza o
       // caso já em investigação, pra não perder a atribuição de um analista.
@@ -473,12 +552,11 @@ export async function recomputarCasos(): Promise<void> {
         [casosExistentes]
       );
       casoCanonico = infoRes.rows[0].id;
-      const extras = casosExistentes.filter((id) => id !== casoCanonico);
-      await pool.query(`UPDATE alerta_fraude SET caso_id = $1 WHERE caso_id = ANY($2::uuid[])`, [casoCanonico, extras]);
-      await pool.query(
-        `DELETE FROM caso_fraude WHERE id = ANY($1::uuid[]) AND NOT EXISTS (SELECT 1 FROM alerta_fraude WHERE caso_id = caso_fraude.id)`,
-        [extras]
-      );
+    } else {
+      // Grupo novo, ou um caso antigo está sendo dividido (nenhum dos
+      // candidatos bate exatamente) — cria um caso novo pra este grupo.
+      const novo = await pool.query(`INSERT INTO caso_fraude DEFAULT VALUES RETURNING id`);
+      casoCanonico = novo.rows[0].id;
     }
 
     const idsParaAtualizar = alertasDoComponente.filter((a) => a.caso_id !== casoCanonico).map((a) => a.id);
@@ -486,6 +564,13 @@ export async function recomputarCasos(): Promise<void> {
       await pool.query(`UPDATE alerta_fraude SET caso_id = $1 WHERE id = ANY($2::uuid[])`, [casoCanonico, idsParaAtualizar]);
     }
   }
+
+  // Limpeza final: um caso que ficou sem nenhum alerta aberto (esvaziado
+  // por um split ou merge acima) não deve continuar aparecendo na fila.
+  await pool.query(
+    `DELETE FROM caso_fraude WHERE status IN ('aberto', 'em_investigacao')
+       AND NOT EXISTS (SELECT 1 FROM alerta_fraude WHERE caso_id = caso_fraude.id AND status = 'aberto')`
+  );
 }
 
 // Trava de reentrância: sem isso, duas chamadas sobrepostas (o job
@@ -536,6 +621,7 @@ async function executarDeteccaoFraudeInterno(): Promise<boolean> {
   let houveMudanca = false;
   for (const [regra, resultado] of porRegra) {
     const chavesValidas = new Set(resultado.gerados.map((a) => chaveClientes(a.clientes_ids)));
+    resultado.chavesValidasExtras?.forEach((c) => chavesValidas.add(c));
     const fechouAlgum = await fecharAlertasObsoletos(
       regra,
       resultado.chavesAvaliadas,

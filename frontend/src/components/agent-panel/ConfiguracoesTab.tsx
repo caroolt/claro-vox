@@ -15,7 +15,7 @@ const ROTULOS: Record<string, string> = {
 // Aba exclusiva do admin: parâmetros operacionais que hoje seriam
 // constantes fixas no código (meta de transbordo da Visão geral, limiares
 // do motor de detecção de fraude) — editáveis aqui, sem precisar de deploy.
-export function ConfiguracoesTab() {
+export function ConfiguracoesTab({ onAtualizado }: { onAtualizado?: () => void }) {
   const [lista, setLista] = useState<Configuracao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -51,6 +51,10 @@ export function ConfiguracoesTab() {
     try {
       await configuracoes.atualizar(chave, valor);
       await carregar();
+      // O painel (Visão geral, mensagem de abertura do atendente) mantém a
+      // própria cópia dessas configurações — sem avisar aqui, o valor novo
+      // só apareceria lá depois do próximo polling automático (até 8s).
+      onAtualizado?.();
     } catch {
       setErro("Não foi possível salvar essa configuração.");
     } finally {

@@ -17,21 +17,23 @@ const fluxoSchema = z.object({
   fluxo_dados: z.unknown().optional(),
 });
 
+// .nullable() nos opcionais chamados pelo Orquestrador (Python/FastAPI):
+// `Optional[...] = None` vira `null` explícito no JSON, não chave ausente.
 const mensagemSchema = z.object({
   remetente: z.enum(["atendente", "cliente", "vox"], {
     errorMap: () => ({ message: "remetente deve ser 'atendente', 'cliente' ou 'vox'" }),
   }),
-  canal: z.string().trim().min(1).optional(),
+  canal: z.string().trim().min(1).nullable().optional(),
   conteudo: z.string().trim().min(1, "conteudo é obrigatório"),
 });
 
 const intencaoSchema = z.object({
-  mensagem_id: z.string().trim().min(1).optional(),
-  categoria: z.string().trim().optional(),
-  subcategoria: z.string().trim().optional(),
-  confianca: z.number().optional(),
-  tom_emocional: z.string().trim().optional(),
-  jornada_status: z.string().trim().optional(),
+  mensagem_id: z.string().trim().min(1).nullable().optional(),
+  categoria: z.string().trim().nullable().optional(),
+  subcategoria: z.string().trim().nullable().optional(),
+  confianca: z.number().nullable().optional(),
+  tom_emocional: z.string().trim().nullable().optional(),
+  jornada_status: z.string().trim().nullable().optional(),
 });
 
 // GET /v1/sessions — lista para o painel "Sessões Ativas" do Vox Briefing

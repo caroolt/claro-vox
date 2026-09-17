@@ -8,12 +8,14 @@ import { validateBody } from "../validate";
 
 export const handoffRouter = Router();
 
+// .nullable() nos opcionais: o Orquestrador (Python) manda Optional[str] =
+// None como `null` explícito no JSON, não como chave ausente.
 const acionarHandoffSchema = z.object({
   sessao_id: z.string().trim().min(1, "sessao_id é obrigatório"),
   motivo: z.string().trim().min(1, "motivo é obrigatório"),
   tom_emocional: z.string().trim().min(1).nullable().optional(),
-  resumo_jornada: z.string().trim().optional(),
-  sugestao_resolucao: z.string().trim().optional(),
+  resumo_jornada: z.string().trim().nullable().optional(),
+  sugestao_resolucao: z.string().trim().nullable().optional(),
 });
 
 // Cria o briefing + registro de handoff e marca a sessão como

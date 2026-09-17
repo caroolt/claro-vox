@@ -57,14 +57,14 @@ function clientesDoAlerta(alerta: AlertaFraude): ClienteEvidencia[] {
   return (alerta.evidencia.clientes as ClienteEvidencia[] | undefined) || [];
 }
 
-function clientesDoCaso(caso: CasoFraude): ClienteEvidencia[] {
+function clientesDeAlertas(alertas: AlertaFraude[]): ClienteEvidencia[] {
   const porId = new Map<string, ClienteEvidencia>();
-  caso.alertas.forEach((a) => clientesDoAlerta(a).forEach((c) => porId.set(c.id, c)));
+  alertas.forEach((a) => clientesDoAlerta(a).forEach((c) => porId.set(c.id, c)));
   return [...porId.values()];
 }
 
-function regrasDoCaso(caso: CasoFraude): string[] {
-  return [...new Set(caso.alertas.map((a) => a.regra))];
+function regrasDeAlertas(alertas: AlertaFraude[]): string[] {
+  return [...new Set(alertas.map((a) => a.regra))];
 }
 
 export function FraudeTab({
@@ -112,6 +112,21 @@ export function FraudeTab({
     }),
     [filtroRegra, filtroConfianca, filtroDataInicio, filtroDataFim, termoBusca]
   );
+
+  // O filtro server-side decide QUAIS CASOS aparecem (um caso aparece se tem
+  // pelo menos um alerta que bate). Dentro de um caso — principalmente um
+  // grande, com alertas de regras/confianças bem diferentes — isso sozinho
+  // não ajuda a enxergar só o que interessa: reaplica o mesmo filtro em
+  // cima dos alertas do caso, só pra decidir o que É MOSTRADO dentro dele
+  // (não muda o que "resolver caso" resolve — isso continua sendo todo
+  // alerta aberto do caso, filtrado ou não).
+  function alertaPassaFiltro(a: AlertaFraude): boolean {
+    if (filtroRegra && a.regra !== filtroRegra) return false;
+    if (filtroConfianca && a.confianca !== filtroConfianca) return false;
+    if (filtroDataInicio && a.criado_em < filtroDataInicio) return false;
+    if (filtroDataFim && a.criado_em > `${filtroDataFim}T23:59:59`) return false;
+    return true;
+  }
 
   // Todo filtro (regra/confiança/período/nome) agora é resolvido no
   // servidor — nunca mais carrega a lista inteira pra filtrar no navegador,
@@ -426,7 +441,8 @@ export function FraudeTab({
         ) : (
           <div className="space-y-2">
             {casos.map((caso) => {
-              const clientes = clientesDoCaso(caso);
+              const alertasVisiveis = filtrosAtivos ? caso.alertas.filter(alertaPassaFiltro) : caso.alertas;
+              const clientes = clientesDeAlertas(alertasVisiveis);
               const expandidoAtual = expandido.has(caso.id);
               const assumidoPorMim = caso.analista_id === usuarioNome;
               return (
@@ -441,7 +457,12 @@ export function FraudeTab({
                         {assumidoPorMim && " · você"}
                         {!assumidoPorMim && caso.analista_id && ` · ${caso.analista_id}`}
                       </span>
-                      {regrasDoCaso(caso).map((r) => (
+                      {filtrosAtivos && (
+                        <span className="text-[11px] text-gray-400">
+                          {alertasVisiveis.length} de {caso.alertas.length} alertas batem
+                        </span>
+                      )}
+                      {regrasDeAlertas(alertasVisiveis).map((r) => (
                         <span key={r} className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] text-gray-500">
                           {REGRA_META[r]?.titulo || r}
                         </span>
@@ -516,10 +537,10 @@ export function FraudeTab({
                       </button>
                       <button
                         onClick={() => alternarExpandido(caso.id)}
-                        title={expandidoAtual ? "Recolher alertas" : `Ver ${caso.alertas.length} alerta(s)`}
+                        title={expandidoAtual ? "Recolher alertas" : `Ver ${alertasVisiveis.length} alerta(s)`}
                         className="flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5 text-[11px] text-gray-500 hover:border-claro-red hover:text-claro-red"
                       >
-                        {caso.alertas.length}
+                        {alertasVisiveis.length}
                         {expandidoAtual ? <ChevronUp className="h-3 w-3" strokeWidth={2} /> : <ChevronDown className="h-3 w-3" strokeWidth={2} />}
                       </button>
                     </div>
@@ -554,7 +575,7 @@ export function FraudeTab({
 
                   {expandidoAtual && (
                     <div className="mt-3 space-y-1.5 border-t border-gray-100 pt-2">
-                      {caso.alertas.map((a) => (
+                      {alertasVisiveis.map((a) => (
                         <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg bg-claro-gray-light px-2.5 py-1.5">
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-medium text-gray-600">{REGRA_META[a.regra]?.titulo || a.regra}</p>

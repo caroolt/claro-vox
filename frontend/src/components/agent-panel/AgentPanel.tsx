@@ -95,6 +95,14 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodo]);
 
+  // Chamado pela aba Configurações ao salvar um parâmetro — sem isso, a
+  // meta de transbordo (Visão geral) e o timeout de inatividade (mensagem
+  // de abertura do atendente) só refletiam a mudança no próximo polling
+  // automático (até 8s depois), em vez de imediatamente.
+  async function atualizarConfiguracoes() {
+    setConfiguracoes(await configuracoesApi.listar());
+  }
+
   // Pisca o painel a cada evento em tempo real — sinal periférico de mudança.
   useEffect(() => {
     if (!ultimoEvento) return;
@@ -270,7 +278,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
             />
           )}
 
-          {aba === "configuracoes" && <ConfiguracoesTab />}
+          {aba === "configuracoes" && <ConfiguracoesTab onAtualizado={atualizarConfiguracoes} />}
         </div>
       </div>
 
