@@ -192,6 +192,40 @@ async function detectarRegraC(limiar: number): Promise<AlertaGerado[]> {
   return alertas;
 }
 
+function chaveClientes(ids: string[]): string {
+  return [...ids].sort().join(",");
+}
+
+// Fecha automaticamente alertas "aberto" de uma regra que não aparecem mais
+// entre os alertas recém-calculados — ou seja, deixaram de bater com o
+// critério atual (limiar de configuração mudou, ou o dado subjacente mudou,
+// ex.: cliente anonimizado). Sem isso, um alerta antigo ficava preso pra
+// sempre em "aberto" mesmo depois de, por exemplo, subir o limiar de
+// similaridade da Regra C — a configuração mudava mas o alerta não refletia
+// a mudança. Nunca mexe em alertas já revisados/descartados por um humano
+// (preserva a trilha de auditoria de quem decidiu o quê).
+async function fecharAlertasObsoletos(
+  regra: AlertaGerado["regra"],
+  chavesValidas: Set<string>
+): Promise<boolean> {
+  const abertos = await pool.query(
+    `SELECT id, clientes_ids FROM alerta_fraude WHERE regra = $1 AND status = 'aberto'`,
+    [regra]
+  );
+  const obsoletos = abertos.rows.filter((r) => !chavesValidas.has(chaveClientes(r.clientes_ids)));
+  if (!obsoletos.length) return false;
+
+  const ids = obsoletos.map((r) => r.id);
+  await pool.query(
+    `UPDATE alerta_fraude SET status = 'descartado', resolvido_em = now(), resolvido_por = 'sistema',
+       nota_resolucao = 'Fechado automaticamente: não atende mais aos critérios de detecção atuais.'
+     WHERE id = ANY($1::uuid[])`,
+    [ids]
+  );
+  await Promise.all(ids.map((id) => audit("sistema", "fraude.alerta.fechado_automatico", id)));
+  return true;
+}
+
 // Upsert idempotente: um alerta em aberto com a mesma regra + mesmo
 // conjunto de clientes é atualizado (não duplicado) a cada nova checagem.
 // Devolve se um alerta NOVO foi criado (diferente de só atualizar a
@@ -223,8 +257,10 @@ async function upsertAlerta(a: AlertaGerado): Promise<boolean> {
 // fraude está aberto) quanto pelo job periódico (deteccaoFraude.ts), que
 // garante que alertas novos apareçam em tempo real via WebSocket mesmo que
 // ninguém esteja com a aba de Fraude aberta no momento em que a fraude
-// acontece. Devolve true se algum alerta novo foi criado (e, nesse caso,
-// já avisa os painéis conectados).
+// acontece. Também fecha automaticamente alertas abertos que deixaram de
+// bater com o critério atual (ver fecharAlertasObsoletos). Devolve true se
+// algum alerta foi criado ou fechado (e, nesse caso, já avisa os painéis
+// conectados).
 export async function executarDeteccaoFraude(): Promise<boolean> {
   const [limiarA, limiarC] = await Promise.all([
     configValor("limiar_fraude_pre_pago", 3),
@@ -237,13 +273,24 @@ export async function executarDeteccaoFraude(): Promise<boolean> {
     detectarRegraC(limiarC),
   ]);
 
-  let houveAlertaNovo = false;
+  const porRegra: Record<AlertaGerado["regra"], AlertaGerado[]> = {
+    A_volume_cpf: alertasA,
+    B_dispositivo_ip: alertasB,
+    C_estilo_escrita: alertasC,
+  };
+  let houveMudanca = false;
+  for (const [regra, gerados] of Object.entries(porRegra) as [AlertaGerado["regra"], AlertaGerado[]][]) {
+    const chavesValidas = new Set(gerados.map((a) => chaveClientes(a.clientes_ids)));
+    const fechouAlgum = await fecharAlertasObsoletos(regra, chavesValidas);
+    if (fechouAlgum) houveMudanca = true;
+  }
+
   for (const a of [...alertasA, ...alertasB, ...alertasC]) {
     const novo = await upsertAlerta(a);
-    if (novo) houveAlertaNovo = true;
+    if (novo) houveMudanca = true;
   }
-  if (houveAlertaNovo) broadcast("fraude.alerta.criado", {});
-  return houveAlertaNovo;
+  if (houveMudanca) broadcast("fraude.alerta.criado", {});
+  return houveMudanca;
 }
 
 // GET /v1/fraude/alertas — roda a detecção sob demanda e devolve os
