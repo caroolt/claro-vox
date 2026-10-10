@@ -10,3 +10,8 @@ __pycache__/
 .agents/
 .claude/
 skills-lock.json
+
+# Workspace de edição do vídeo da Sprint 4 (HyperFrames) — vídeos brutos,
+# renders e assets binários grandes, não é código do projeto nem deve
+# entrar no histórico do repo. O vídeo final é entregue separadamente.
+sprint4-video/
