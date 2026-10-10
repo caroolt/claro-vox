@@ -4,3 +4,9 @@ __pycache__/
 *.pyc
 .env
 *.log
+
+# Skills instaladas via `npx skills add` (ex.: HyperFrames) — ferramental
+# local do agente, não faz parte do projeto Claro Vox.
+.agents/
+.claude/
+skills-lock.json
