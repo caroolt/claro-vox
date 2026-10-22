@@ -67,7 +67,7 @@ class ReconhecerIn(BaseModel):
 
 
 # ----------------------------------------------------------------------
-# Templates de resposta por categoria — usados quando o LLM real (Claude)
+# Templates de resposta por categoria — usados quando o LLM real (Gemini)
 # não está configurado (ver llm.py). Cobrem os cenários da Seção 5.7.
 # ----------------------------------------------------------------------
 def _resposta_template(categoria: str, tom: Optional[str], trechos: list, nome_cliente: Optional[str]) -> str:

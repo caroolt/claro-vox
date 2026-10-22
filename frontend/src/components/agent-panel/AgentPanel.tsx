@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookOpen, Download } from "lucide-react";
+import { BookOpen, Download, Menu } from "lucide-react";
 import { civ, configuracoes as configuracoesApi } from "../../api";
 import type { AuditoriaEntry, Briefing, Configuracao, KnowledgeItem, Metrics, SessaoResumo, Usuario } from "../../types";
 import { useBriefingSocket } from "../../useBriefingSocket";
@@ -62,6 +62,7 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
   const [briefingAberto, setBriefingAberto] = useState<Briefing | null>(null);
   const [chatSessao, setChatSessao] = useState<ChatSessao | null>(null);
   const [focoFraude, setFocoFraude] = useState<{ nome: string; ts: number } | null>(null);
+  const [menuAberto, setMenuAberto] = useState(false);
 
   const { ultimoEvento, conectado } = useBriefingSocket();
 
@@ -179,20 +180,31 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
         pendentes={pendentes}
         usuario={usuario}
         onSair={onSair}
+        abertaNoMobile={menuAberto}
+        onFechar={() => setMenuAberto(false)}
       />
 
-      <div className="flex-1 overflow-y-auto bg-claro-gray-light">
+      <div className="min-w-0 flex-1 overflow-y-auto bg-claro-gray-light">
         {/* Cabeçalho da página — título da aba atual + status ao vivo */}
-        <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-gray-200 bg-claro-gray-light/95 px-6 py-3.5 backdrop-blur">
-          <h2 className="text-base font-semibold text-gray-900">{rotuloAba}</h2>
-          <div className="flex items-center gap-2">
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-gray-200 bg-claro-gray-light/95 px-4 py-3.5 backdrop-blur md:px-6">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              onClick={() => setMenuAberto(true)}
+              title="Abrir menu"
+              className="-ml-1 rounded-md p-1.5 text-gray-600 hover:bg-gray-200 md:hidden"
+            >
+              <Menu className="h-5 w-5" strokeWidth={2} />
+            </button>
+            <h2 className="truncate text-base font-semibold text-gray-900">{rotuloAba}</h2>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={exportarCsv}
               disabled={exportandoCsv}
               className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-claro-red hover:text-claro-red disabled:opacity-50"
             >
               <Download className="h-3.5 w-3.5" strokeWidth={2} />
-              {exportandoCsv ? "exportando…" : "Exportar CSV"}
+              <span className="hidden sm:inline">{exportandoCsv ? "exportando…" : "Exportar CSV"}</span>
             </button>
             {atualizadoEm && (
               <span className="hidden text-[11px] text-gray-400 sm:inline">
@@ -210,12 +222,12 @@ export function AgentPanel({ usuario, onSair }: { usuario: Usuario; onSair: () =
                   conectado ? "vox-pulse" : ""
                 }`}
               />
-              {conectado ? "tempo real conectado" : "reconectando…"}
+              <span className="hidden sm:inline">{conectado ? "tempo real conectado" : "reconectando…"}</span>
             </span>
           </div>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           {aba === "geral" && (
           <VisaoGeralTab
             metrics={metrics}

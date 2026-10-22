@@ -162,7 +162,7 @@ export function ChatSimulator() {
         await civ.enviarMensagem(sessaoId, "cliente", canal, texto);
       } else if (fase === "ativa" && sessaoId) {
         const r = await orchestrator.message(sessaoId, canal, texto);
-        const meta = `intenção: ${r.categoria} · tom: ${r.tom_emocional}${r.fonte_classificacao === "llm" ? " · classificado pelo Claude" : ""}`;
+        const meta = `intenção: ${r.categoria} · tom: ${r.tom_emocional}${r.fonte_classificacao === "llm" ? " · classificado pelo Gemini" : ""}`;
         add("vox", r.resposta, meta, r.transbordo ? { alvo: "ia", briefingId: r.briefing_id } : undefined);
         if (r.transbordo) {
           add("sistema", `🔁 Transbordo acionado: briefing #${String(r.briefing_id).slice(0, 8)} enviado ao painel do atendente (Vox Briefing).`);
@@ -247,14 +247,14 @@ export function ChatSimulator() {
   return (
     <div className="flex h-full flex-col bg-claro-gray-light">
       {/* Barra de controle do simulador — não faz parte do "aparelho" do cliente */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-6 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400">Canal</span>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-200 bg-white px-3 py-2.5 sm:px-6 sm:py-3">
+        <div className="-mx-3 flex w-[calc(100%+1.5rem)] items-center gap-2 overflow-x-auto px-3 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0">
+          <span className="mr-1 shrink-0 text-xs font-medium uppercase tracking-wide text-gray-400">Canal</span>
           {CANAIS.map((c) => (
             <button
               key={c.valor}
               onClick={() => trocarCanal(c.valor)}
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
                 canal === c.valor
                   ? "border-claro-red bg-claro-red text-white"
                   : "border-gray-300 bg-white text-gray-600 hover:border-claro-red hover:text-claro-red"
@@ -265,7 +265,7 @@ export function ChatSimulator() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-3">
           {clienteId && (
             <button
               onClick={excluirDados}
@@ -286,9 +286,9 @@ export function ChatSimulator() {
       </div>
 
       {mostrarTrocaCanal && (
-        <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-6 py-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-amber-200 bg-amber-50 px-3 py-3 sm:flex-nowrap sm:px-6">
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" strokeWidth={2} />
-          <span className="text-sm text-amber-800">
+          <span className="min-w-0 flex-1 text-sm text-amber-800 sm:flex-none">
             Simulando contato pelo canal <strong>{canalAtual.rotulo}</strong>: informe o CPF para reconhecimento
             automático
           </span>
@@ -296,7 +296,8 @@ export function ChatSimulator() {
             value={cpfTroca}
             onChange={(e) => setCpfTroca(e.target.value)}
             placeholder="000.000.000-00"
-            className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-sm focus:border-claro-red focus:outline-none"
+            inputMode="numeric"
+            className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-base focus:border-claro-red focus:outline-none sm:flex-none sm:text-sm"
           />
           <button
             onClick={confirmarTrocaCanal}
@@ -309,8 +310,8 @@ export function ChatSimulator() {
       )}
 
       {/* "Aparelho" do cliente — janela de chat centralizada, como um app real */}
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6">
-        <div className="flex h-full min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg">
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden sm:p-6">
+        <div className="flex h-full min-h-0 w-full max-w-lg flex-col overflow-hidden bg-white sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-lg">
           <div className="flex items-center gap-3 bg-claro-black px-4 py-3 text-white">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
               <Bot className="h-4 w-4 text-claro-red" strokeWidth={2} />
@@ -335,7 +336,7 @@ export function ChatSimulator() {
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-claro-gray-light px-4 py-4">
             {bubbles.length === 0 && fase === "inicio" && (
-              <div className="mt-16 text-center text-gray-400">
+              <div className="mt-10 text-center text-gray-400 sm:mt-16">
                 <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-claro-red-light">
                   <Bot className="h-6 w-6 text-claro-red" strokeWidth={2} />
                 </span>
@@ -399,15 +400,15 @@ export function ChatSimulator() {
                 onKeyDown={(e) => e.key === "Enter" && enviar()}
                 placeholder="Digite sua mensagem…"
                 disabled={carregando}
-                className="flex-1 rounded-full border border-gray-300 px-4 py-2 text-sm focus:border-claro-red focus:outline-none"
+                className="min-w-0 flex-1 rounded-full border border-gray-300 px-4 py-2 text-base focus:border-claro-red focus:outline-none sm:text-sm"
               />
               <button
                 onClick={enviar}
                 disabled={carregando || !input.trim()}
-                className="flex items-center gap-1.5 rounded-full bg-claro-red px-4 py-2 text-sm font-medium text-white transition hover:bg-claro-red-dark disabled:opacity-50"
+                className="flex shrink-0 items-center gap-1.5 rounded-full bg-claro-red px-4 py-2 text-sm font-medium text-white transition hover:bg-claro-red-dark disabled:opacity-50"
               >
                 <Send className="h-3.5 w-3.5" strokeWidth={2.25} />
-                Enviar
+                <span className="hidden sm:inline">Enviar</span>
               </button>
             </div>
           )}

@@ -85,7 +85,8 @@ services:
       DATABASE_URL: postgres://clarovox:clarovox_dev_pw@postgres:5432/claro_vox
       CIV_URL: http://civ:4001
       # Opcional — ver orchestrator/.env.example
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
     ports:
       - "4002:4002"
 

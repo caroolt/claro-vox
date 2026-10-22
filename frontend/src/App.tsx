@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Headset, MessageCircle, type LucideIcon } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { ChatSimulator } from "./components/ChatSimulator";
 import { AgentPanel } from "./components/agent-panel/AgentPanel";
 import { LoginScreen } from "./components/auth/LoginScreen";
@@ -7,13 +7,23 @@ import { civ, onAuthExpirado, orchestrator, setAuthToken } from "./api";
 import type { Usuario } from "./types";
 import logoClaroVox from "./assets/claro-vox-logo.png";
 
-type Aba = "cliente" | "atendente";
+// Duas páginas independentes: o simulador de chat do cliente em "/" e o
+// painel do atendente em "/painel". O roteamento é só por pathname — o
+// Cloudflare (wrangler.jsonc) e o nginx (nginx.conf) devolvem o index.html
+// para qualquer rota, então "/painel" pode ser aberto direto em outra aba.
+type Pagina = "chat" | "painel";
+
+const ROTA_PAINEL = "/painel";
+
+function paginaAtual(): Pagina {
+  return window.location.pathname.replace(/\/+$/, "") === ROTA_PAINEL ? "painel" : "chat";
+}
 
 const STORAGE_TOKEN = "vox_briefing_token";
 const STORAGE_USUARIO = "vox_briefing_usuario";
 
 function App() {
-  const [aba, setAba] = useState<Aba>("cliente");
+  const [pagina, setPagina] = useState<Pagina>(paginaAtual);
   const [status, setStatus] = useState<{ civ: boolean; orch: boolean }>({ civ: false, orch: false });
   const [usuario, setUsuario] = useState<Usuario | null>(null);
 
@@ -45,6 +55,21 @@ function App() {
   }
 
   useEffect(() => {
+    const aoNavegar = () => setPagina(paginaAtual());
+    window.addEventListener("popstate", aoNavegar);
+    return () => window.removeEventListener("popstate", aoNavegar);
+  }, []);
+
+  function navegar(destino: Pagina) {
+    window.history.pushState(null, "", destino === "painel" ? ROTA_PAINEL : "/");
+    setPagina(destino);
+  }
+
+  useEffect(() => {
+    document.title = pagina === "painel" ? "Claro Vox · Painel do Atendente" : "Claro Vox · Simulador de Cliente";
+  }, [pagina]);
+
+  useEffect(() => {
     const checar = async () => {
       const civOk = await civ.health().then(() => true).catch(() => false);
       const orchOk = await orchestrator.health().then(() => true).catch(() => false);
@@ -56,34 +81,39 @@ function App() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100">
-      <header className="bg-claro-black text-white px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="flex h-dvh flex-col bg-gray-100">
+      <header className="flex items-center justify-between gap-3 bg-claro-black px-4 py-3 text-white">
+        <div className="flex min-w-0 items-center gap-3">
           <img src={logoClaroVox} alt="Claro Vox" className="h-6 w-auto" />
-          <span className="text-gray-400 text-sm hidden sm:inline">| Camada de Identidade Conversacional</span>
+          <span className="hidden text-sm text-gray-400 sm:inline">
+            | {pagina === "painel" ? "Painel do Atendente (Vox Briefing)" : "Simulador de Cliente"}
+          </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
           <StatusDot ok={status.civ} label="CIV" />
           <StatusDot ok={status.orch} label="Orquestrador" />
-          {usuario && aba === "atendente" && (
-            <button onClick={sair} className="text-xs text-gray-300 hover:text-white">
+          {usuario && pagina === "painel" && (
+            <button onClick={sair} className="hidden text-xs text-gray-300 hover:text-white md:inline">
               {usuario.nome} · sair
             </button>
           )}
+          <a
+            href={pagina === "painel" ? "/" : ROTA_PAINEL}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              navegar(pagina === "painel" ? "chat" : "painel");
+            }}
+            className="flex items-center gap-1 text-xs text-gray-300 hover:text-white"
+          >
+            {pagina === "painel" ? "Simulador" : "Painel"}
+            <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
+          </a>
         </div>
       </header>
 
-      <nav className="bg-white border-b border-gray-200 px-4 flex gap-1">
-        <TabButton ativo={aba === "cliente"} onClick={() => setAba("cliente")} icone={MessageCircle}>
-          Simulador de Cliente
-        </TabButton>
-        <TabButton ativo={aba === "atendente"} onClick={() => setAba("atendente")} icone={Headset}>
-          Painel do Atendente (Vox Briefing)
-        </TabButton>
-      </nav>
-
       <main className="min-h-0 flex-1 overflow-hidden">
-        {aba === "cliente" ? (
+        {pagina === "chat" ? (
           <ChatSimulator />
         ) : usuario ? (
           <AgentPanel usuario={usuario} onSair={sair} />
@@ -95,35 +125,11 @@ function App() {
   );
 }
 
-function TabButton({
-  ativo,
-  onClick,
-  icone: Icone,
-  children,
-}: {
-  ativo: boolean;
-  onClick: () => void;
-  icone: LucideIcon;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition ${
-        ativo ? "border-claro-red text-claro-red" : "border-transparent text-gray-500 hover:text-gray-700"
-      }`}
-    >
-      <Icone className="h-4 w-4" strokeWidth={2} />
-      {children}
-    </button>
-  );
-}
-
 function StatusDot({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span className="flex items-center gap-1.5 text-xs text-gray-300">
+    <span className="flex items-center gap-1.5 text-xs text-gray-300" title={label}>
       <span className={`w-2 h-2 rounded-full ${ok ? "bg-status-good" : "bg-status-critical"}`} />
-      {label}
+      <span className="hidden sm:inline">{label}</span>
     </span>
   );
 }
