@@ -54,7 +54,7 @@ com o mesmo contrato de dados:
    vetorial (`orchestrator/rag.py`) para compensar a menor precisão
    semântica de um embedding tão simples.
 2. **LLM**: o Orquestrador tenta usar o Google Gemini de verdade
-   (`orchestrator/llm.py`, SDK `google-genai`, modelo `gemini-2.5-flash` por
+   (`orchestrator/llm.py`, SDK `google-genai`, modelo `gemini-3.8-flash` por
    padrão, configurável via `GEMINI_MODEL`) se `GEMINI_API_KEY` estiver
    definida (gere em https://aistudio.google.com/apikey); sem a
    chave, cai automaticamente em um motor de classificação por regras +
