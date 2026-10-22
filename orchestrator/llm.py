@@ -27,7 +27,7 @@ if _API_KEY:
         print(f"[orchestrator] llm: falha ao inicializar SDK Gemini, usando fallback por regras: {e}")
         _client = None
 
-MODEL = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.5-flash"
+MODEL = os.getenv("GEMINI_MODEL", "").strip() or "gemini-3.8-flash"
 
 
 def llm_disponivel() -> bool:
