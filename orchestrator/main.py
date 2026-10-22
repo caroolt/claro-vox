@@ -148,11 +148,19 @@ async def _civ_post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
 @app.get("/health")
 async def health():
     civ_ok = True
+    civ_erro = None
     try:
         await _civ_get("/health")
-    except Exception:
+    except Exception as e:
         civ_ok = False
-    return {"status": "ok", "servico": "orchestrator", "llm_ativo": llm.llm_disponivel(), "civ_alcancavel": civ_ok}
+        # Expõe o motivo da falha (e a URL usada, com repr para mostrar
+        # espaços ou barras sobrando) para diagnosticar o deploy.
+        civ_erro = f"{type(e).__name__}: {e}"
+    resultado = {"status": "ok", "servico": "orchestrator", "llm_ativo": llm.llm_disponivel(), "civ_alcancavel": civ_ok}
+    if civ_erro:
+        resultado["civ_url"] = repr(CIV_URL)
+        resultado["civ_erro"] = civ_erro
+    return resultado
 
 
 # ----------------------------------------------------------------------
