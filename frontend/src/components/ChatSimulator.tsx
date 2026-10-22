@@ -68,6 +68,9 @@ export function ChatSimulator() {
   const [mostrarTrocaCanal, setMostrarTrocaCanal] = useState(false);
   const [cpfTroca, setCpfTroca] = useState("");
   const [atendimentoHumano, setAtendimentoHumano] = useState(false);
+  // true quando o atendente encerra a sessão: a pesquisa de NPS do assistente
+  // virtual que ficou sem resposta some, para sobrar só a do atendente.
+  const [atendimentoEncerrado, setAtendimentoEncerrado] = useState(false);
   // true depois que a sessão atual é encerrada por inatividade (ver
   // handoff.timeout abaixo) — a sessão morreu, mas a janela de chat continua
   // aberta; a próxima mensagem do cliente deve abrir uma sessão nova em vez
@@ -100,6 +103,7 @@ export function ChatSimulator() {
     } else if (ultimoEvento.type === "handoff.assumed") {
       setAtendimentoHumano(true);
     } else if (ultimoEvento.type === "handoff.closed") {
+      setAtendimentoEncerrado(true);
       add("sistema", "Atendimento encerrado pelo atendente.", undefined, { alvo: "atendente" });
     } else if (ultimoEvento.type === "handoff.timeout") {
       // Encerrado sozinho por inatividade (ver civ/src/jobs/timeoutAtendente.ts)
@@ -140,6 +144,7 @@ export function ChatSimulator() {
         // de digitar não serve de resposta pra primeira pergunta do Cold
         // Start, então só some deste envio (aceitável pro MVP).
         setPrecisaNovaSessao(false);
+        setAtendimentoEncerrado(false);
         const r = await orchestrator.coldstartStart(canal, `${canal}-demo-${uid()}`, undefined, obterDispositivoId());
         setSessaoId(r.sessao_id);
         setFase("coldstart");
@@ -201,6 +206,7 @@ export function ChatSimulator() {
         // gravadas (sem resposta do Vox nem chegar a atendente nenhum,
         // já que não existe atendente designado para a sessão nova).
         setAtendimentoHumano(false);
+        setAtendimentoEncerrado(false);
         add("sistema", `📡 Reconhecido automaticamente no canal ${canal}, trazendo o contexto do canal anterior: ${r.canal_anterior || "nenhum"}.`);
         add("vox", r.mensagem);
       } else {
@@ -240,6 +246,7 @@ export function ChatSimulator() {
     setProtocolo(null);
     setMostrarTrocaCanal(false);
     setAtendimentoHumano(false);
+    setAtendimentoEncerrado(false);
   }
 
   const canalAtual = CANAIS.find((c) => c.valor === canal) || CANAIS[0];
@@ -386,7 +393,14 @@ export function ChatSimulator() {
                     </>
                   )}
                 </div>
-                {b.nps && sessaoId && <NpsInline sessaoId={sessaoId} alvo={b.nps.alvo} briefingId={b.nps.briefingId} />}
+                {b.nps && sessaoId && (
+                  <NpsInline
+                    sessaoId={sessaoId}
+                    alvo={b.nps.alvo}
+                    briefingId={b.nps.briefingId}
+                    ocultarSeAberta={b.nps.alvo === "ia" && atendimentoEncerrado}
+                  />
+                )}
               </div>
             ))}
             <div ref={fimRef} />
@@ -426,10 +440,12 @@ function NpsInline({
   sessaoId,
   alvo,
   briefingId,
+  ocultarSeAberta,
 }: {
   sessaoId: string;
   alvo: "ia" | "atendente";
   briefingId?: string | null;
+  ocultarSeAberta?: boolean;
 }) {
   const [nota, setNota] = useState<number | null>(null);
   const [comentario, setComentario] = useState("");
@@ -451,6 +467,8 @@ function NpsInline({
       setEstado("aberta");
     }
   }
+
+  if (estado === "aberta" && ocultarSeAberta) return null;
 
   if (estado === "enviada") {
     return (

@@ -313,9 +313,14 @@ async def processar_mensagem(body: MensagemIn):
         # (RF007-009). Dentro do fluxo de contratação a mensagem já é
         # específica (explica a divergência de dados), então não é sobrescrita.
         if requer_transbordo:
+            abertura = (
+                "Claro! Vou te transferir para um atendente humano. "
+                if intencao_fresca.categoria == "atendimento/atendente_humano"
+                else "Não consigo te ajudar com isso. Estou te transferindo para um atendente! "
+            )
             resposta_texto = (
-                "Não consigo te ajudar com isso. Estou te transferindo para um atendente! "
-                "Antes disso, de 0 a 10, o quanto você recomendaria o atendimento do assistente virtual?"
+                abertura
+                + "Antes disso, de 0 a 10, o quanto você recomendaria o atendimento do assistente virtual?"
             )
 
     # 3) registra a resposta do Vox
