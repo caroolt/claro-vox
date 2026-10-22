@@ -1,4 +1,4 @@
-# Claro Vox — MVP (Sprint 3)
+# Claro Vox
 
 Implementação funcional (back-end + front-end) da camada de identidade
 conversacional **Claro Vox**, descrita na documentação técnica da Sprint 2.
