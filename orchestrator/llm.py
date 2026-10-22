@@ -58,7 +58,8 @@ def classificar_e_responder(
         "Responda SOMENTE em JSON válido com as chaves: "
         "resposta (string), categoria (string, formato area/subcategoria), "
         "tom_emocional (um de: neutro, frustracao, urgencia, satisfacao), "
-        "requer_transbordo (boolean)."
+        "requer_transbordo (boolean; true sempre que o cliente pedir para falar com um "
+        "atendente humano ou pessoa, ou estiver hostil/muito frustrado)."
     )
     user = (
         f"Contexto da sessão: {contexto_txt}\n\n"

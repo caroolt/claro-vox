@@ -271,8 +271,18 @@ async def processar_mensagem(body: MensagemIn):
             categoria = llm_resultado.get("categoria", categoria_provisoria)
             tom = llm_resultado.get("tom_emocional", "neutro")
             resposta_texto = llm_resultado.get("resposta") or _resposta_template(categoria, tom, trechos, nome_cliente)
-            requer_transbordo = bool(llm_resultado.get("requer_transbordo", False))
-            motivo_transbordo = "classificado pelo LLM como necessitando atendimento humano" if requer_transbordo else None
+            # Pedido explícito de atendente humano, hostilidade e frustração
+            # (gatilhos do motor de regras) sempre transbordam, mesmo que o LLM
+            # decida responder sozinho — senão o Vox "promete" a transferência
+            # no texto mas nenhum briefing/NPS é gerado.
+            requer_transbordo = bool(llm_resultado.get("requer_transbordo", False)) or intencao_fresca.requer_transbordo
+            if intencao_fresca.requer_transbordo:
+                categoria = categoria_provisoria
+                motivo_transbordo = intencao_fresca.motivo_transbordo
+            elif requer_transbordo:
+                motivo_transbordo = "classificado pelo LLM como necessitando atendimento humano"
+            else:
+                motivo_transbordo = None
             fonte_classificacao = "llm"
         else:
             intencao = nlu.classificar(body.conteudo, categoria_anterior)
