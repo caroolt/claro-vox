@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "claro-vox",
+  "compatibility_date": "2026-10-21",
+  // Só assets estáticos: o build do Vite (npm run build) gera ./dist.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
