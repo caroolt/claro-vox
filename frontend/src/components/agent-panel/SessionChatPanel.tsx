@@ -92,7 +92,7 @@ export function SessionChatPanel({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
-        className="mx-4 flex h-[70vh] w-full max-w-4xl overflow-hidden rounded-xl bg-white"
+        className="mx-2 flex h-[85dvh] w-full max-w-4xl overflow-hidden rounded-xl bg-white sm:mx-4 sm:h-[70vh]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex min-w-0 flex-1 flex-col">

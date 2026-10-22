@@ -1,6 +1,6 @@
 """
 nlu.py — motor de classificação de intenção baseado em regras
-(fallback quando ANTHROPIC_API_KEY não está configurada — ver llm.py).
+(fallback quando GEMINI_API_KEY não está configurada — ver llm.py).
 
 Cobre os cenários documentados na Seção 5.7 do documento técnico
 Claro Vox (Sprint 2), incluindo o Cenário 3 (cobrança contestada) que

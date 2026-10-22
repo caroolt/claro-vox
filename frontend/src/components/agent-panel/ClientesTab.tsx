@@ -90,7 +90,7 @@ export function ClientesTab({
                   className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50"
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:flex-nowrap">
                       <span className="truncate font-medium text-gray-800">{c.nome}</span>
                       <TipoClienteBadge tipo={c.tipo_cliente} />
                     </div>
@@ -98,7 +98,7 @@ export function ClientesTab({
                       cliente desde {fmtData(c.data_cadastro)} · última interação {fmtRelativo(c.ultima_interacao)}
                     </p>
                   </div>
-                  <div className="flex shrink-0 gap-4 text-right">
+                  <div className="flex shrink-0 gap-3 text-right sm:gap-4">
                     <Stat valor={c.total_sessoes} rotulo="sessões" />
                     <Stat valor={c.total_transbordos} rotulo="transbordos" destaque={c.total_transbordos > 0} />
                   </div>
@@ -116,7 +116,16 @@ function Stat({ valor, rotulo, destaque }: { valor: number; rotulo: string; dest
   return (
     <div>
       <p className={`text-lg font-bold tabular-nums ${destaque ? "text-claro-red" : "text-gray-800"}`}>{valor}</p>
-      <p className="text-[10px] uppercase tracking-wide text-gray-400">{rotulo}</p>
+      <p className="text-[10px] uppercase tracking-wide text-gray-400">
+        {rotulo === "transbordos" ? (
+          <>
+            <span className="sm:hidden">transb.</span>
+            <span className="hidden sm:inline">{rotulo}</span>
+          </>
+        ) : (
+          rotulo
+        )}
+      </p>
     </div>
   );
 }

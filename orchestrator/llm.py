@@ -1,8 +1,8 @@
 """
-llm.py — integração opcional com um LLM real (Claude Haiku 4.5) via SDK
-oficial da Anthropic.
+llm.py — integração opcional com um LLM real (Google Gemini) via SDK
+oficial google-genai.
 
-Se ANTHROPIC_API_KEY estiver definida no .env do Orquestrador, as
+Se GEMINI_API_KEY estiver definida no .env do Orquestrador, as
 funções abaixo usam o modelo de verdade para classificar a intenção e
 gerar a resposta em linguagem natural. Sem a chave (caso padrão desta
 demonstração local), retornam None e o main.py cai automaticamente no
@@ -14,18 +14,20 @@ import os
 import json
 from typing import Optional, Dict, Any, List
 
-_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 _client = None
+_types = None
 
 if _API_KEY:
     try:
-        import anthropic
-        _client = anthropic.Anthropic(api_key=_API_KEY)
+        from google import genai
+        from google.genai import types as _types
+        _client = genai.Client(api_key=_API_KEY)
     except Exception as e:
-        print(f"[orchestrator] llm: falha ao inicializar SDK Anthropic, usando fallback por regras: {e}")
+        print(f"[orchestrator] llm: falha ao inicializar SDK Gemini, usando fallback por regras: {e}")
         _client = None
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.5-flash"
 
 
 def llm_disponivel() -> bool:
@@ -37,7 +39,7 @@ def classificar_e_responder(
     contexto: Dict[str, Any],
     trechos_conhecimento: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Usa Claude para classificar a intenção e já gerar a resposta em uma
+    """Usa o Gemini para classificar a intenção e já gerar a resposta em uma
     única chamada (reduz latência para a demonstração). Retorna None se o
     LLM não estiver configurado ou se a chamada falhar (fallback por regras
     assume automaticamente)."""
@@ -65,14 +67,19 @@ def classificar_e_responder(
     )
 
     try:
-        resp = _client.messages.create(
+        resp = _client.models.generate_content(
             model=MODEL,
-            max_tokens=400,
-            system=system,
-            messages=[{"role": "user", "content": user}],
+            contents=user,
+            config=_types.GenerateContentConfig(
+                system_instruction=system,
+                # Folga para o raciocínio interno dos modelos 2.5+, que também
+                # consome tokens de saída; desligado no Flash para reduzir latência.
+                max_output_tokens=2048,
+                response_mime_type="application/json",
+                thinking_config=_types.ThinkingConfig(thinking_budget=0) if MODEL.startswith("gemini-2.5-flash") else None,
+            ),
         )
-        texto = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
-        return json.loads(texto)
+        return json.loads(resp.text or "")
     except Exception as e:
         print(f"[orchestrator] llm: chamada falhou, usando fallback por regras: {e}")
         return None

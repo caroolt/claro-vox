@@ -29,15 +29,16 @@ para a gravação do vídeo de demonstração da Sprint 3.
   (art. 18).
 - **Orquestrador** — Python + FastAPI. Não acessa o Postgres diretamente;
   fala apenas com a CIV. Classifica intenção e tom emocional (motor de
-  regras local, com fallback opcional para Claude Haiku 4.5 via API caso
+  regras local, com fallback opcional para o Google Gemini via API caso
   uma chave seja configurada), faz a recuperação por similaridade (RAG)
   sobre a base de conhecimento, gera a resposta do Vox e decide quando
   acionar o transbordo.
-- **Frontend** — React + Vite + TypeScript + Tailwind. Duas visões: o
-  **Simulador de Cliente** (chat multicanal — WhatsApp, Site, App, Central
-  de Voz) e o **Painel do Atendente / Vox Briefing** (fila de transbordo,
-  sessões ativas, métricas, base de conhecimento), atualizado em tempo
-  real via WebSocket.
+- **Frontend** — React + Vite + TypeScript + Tailwind, responsivo
+  (desktop, tablet e celular). Duas páginas independentes: o **Simulador de
+  Cliente** em `/` (chat multicanal — WhatsApp, Site, App, Central de Voz)
+  e o **Painel do Atendente / Vox Briefing** em `/painel` (fila de
+  transbordo, sessões ativas, métricas, base de conhecimento), atualizado
+  em tempo real via WebSocket.
 
 ## Simplificações assumidas no MVP (documentadas)
 
@@ -52,8 +53,10 @@ com o mesmo contrato de dados:
    um re-ranqueamento léxico sobre os candidatos retornados pela busca
    vetorial (`orchestrator/rag.py`) para compensar a menor precisão
    semântica de um embedding tão simples.
-2. **LLM**: o Orquestrador tenta usar o Claude Haiku 4.5 de verdade
-   (`orchestrator/llm.py`) se `ANTHROPIC_API_KEY` estiver definida; sem a
+2. **LLM**: o Orquestrador tenta usar o Google Gemini de verdade
+   (`orchestrator/llm.py`, SDK `google-genai`, modelo `gemini-2.5-flash` por
+   padrão, configurável via `GEMINI_MODEL`) se `GEMINI_API_KEY` estiver
+   definida (gere em https://aistudio.google.com/apikey); sem a
    chave, cai automaticamente em um motor de classificação por regras +
    respostas por template (`orchestrator/nlu.py`) que cobre os mesmos
    cenários documentados na Seção 5.7.
