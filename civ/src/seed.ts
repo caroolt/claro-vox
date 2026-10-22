@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { pool } from "./db";
+import { ensureSchema, pool } from "./db";
 import { embed } from "./embedding";
 import { hashCpf } from "./crypto";
 import { gerarSegredoMfa, hashSenha } from "./auth";
@@ -254,6 +254,11 @@ interface SessaoSeed {
   mensagens: MensagemSeed[];
   briefing?: BriefingSeed;
   nps?: NpsSeed[];
+  // Sinais cross-identidade (Regra B do motor de fraude) e contratação
+  // fechada na sessão (Regra A conta os pré-pagos confirmados por CPF).
+  dispositivoId?: string;
+  ipOrigem?: string;
+  contrato?: { tipoPlano: "pre-pago" | "controle" | "pos-pago"; status?: "confirmado" | "cancelado" };
 }
 
 interface ClienteSeed {
@@ -379,6 +384,58 @@ function sessaoSuporteRicardo(diasAtras: number, resolvida: boolean, numeroChama
     nps: resolvida ? [{ alvo: "atendente", nota: 7, comentario: "resolveram, mas eh a terceira vez esse mes", minutosDepois: 28 }] : undefined,
   };
 }
+
+const VOX_TRANSFERINDO =
+  "Não consigo te ajudar com isso. Estou te transferindo para um atendente! Antes disso, de 0 a 10, o quanto você recomendaria o atendimento do assistente virtual?";
+
+const NOME_PLANO: Record<"pre-pago" | "controle" | "pos-pago", string> = {
+  "pre-pago": "pré-pago",
+  controle: "Controle",
+  "pos-pago": "pós-pago",
+};
+
+// Contratação de plano fechada pelo próprio Vox — base dos cenários de
+// fraude: o motor (fraudeDeteccao.ts) gera os alertas sozinho a partir dos
+// contratos, dispositivos e IPs gravados aqui, sem inserir alerta à mão.
+function sessaoContratacao(opts: {
+  diasAtras: number;
+  canal: string;
+  tipoPlano: "pre-pago" | "controle" | "pos-pago";
+  pedido: string;
+  dispositivoId?: string;
+  ipOrigem?: string;
+}): SessaoSeed {
+  const plano = NOME_PLANO[opts.tipoPlano];
+  return {
+    canal: opts.canal,
+    diasAtras: opts.diasAtras,
+    estado: "ENCERRADA",
+    jornadaStatus: "RESOLVIDO",
+    dispositivoId: opts.dispositivoId,
+    ipOrigem: opts.ipOrigem,
+    contrato: { tipoPlano: opts.tipoPlano },
+    mensagens: [
+      { remetente: "cliente", conteudo: opts.pedido, minutosDepois: 0, categoria: "venda/contratar_plano", tom: "neutro" },
+      {
+        remetente: "vox",
+        conteudo: `Perfeito! Para contratar o plano ${plano}, preciso confirmar seu nome completo, data de nascimento e CPF.`,
+        minutosDepois: 1,
+      },
+      { remetente: "cliente", conteudo: "pode confirmar com os dados do meu cadastro", minutosDepois: 2 },
+      {
+        remetente: "vox",
+        conteudo: `Dados confirmados. Sua linha ${plano} foi ativada e o protocolo da contratação já está no seu histórico.`,
+        minutosDepois: 3,
+      },
+    ],
+  };
+}
+
+// Aparelho usado por três CPFs diferentes para abrir linhas pré-pagas —
+// Regra B (dispositivo compartilhado) + Regra A (Diego no limite de linhas).
+const DISPOSITIVO_COMPARTILHADO = "dev-7f3a9c21-android";
+// Mesma origem de rede para três CPFs sem relação aparente — Regra B por IP.
+const IP_COMPARTILHADO = "189.40.88.17";
 
 const CLIENTES_DEMO: ClienteSeed[] = [
   {
@@ -622,6 +679,490 @@ const CLIENTES_DEMO: ClienteSeed[] = [
       },
     ],
   },
+
+  // ---- Fraude: aparelho compartilhado + volume de pré-pagos ------------
+  // Diego abre 3 linhas pré-pagas no próprio CPF (Regra A, limiar padrão 3)
+  // e divide o mesmo aparelho com Larissa e Thiago (Regra B) — o motor
+  // agrupa tudo num único caso investigável.
+  {
+    nome: "Diego Martins",
+    tipoCliente: "ativo",
+    cpf: "80011122233",
+    sessoes: [
+      sessaoContratacao({
+        diasAtras: 6,
+        canal: "app",
+        tipoPlano: "pre-pago",
+        pedido: "quero contratar uma linha pre-pago",
+        dispositivoId: DISPOSITIVO_COMPARTILHADO,
+        ipOrigem: "177.92.14.203",
+      }),
+      sessaoContratacao({
+        diasAtras: 4,
+        canal: "app",
+        tipoPlano: "pre-pago",
+        pedido: "quero contratar mais uma linha pre-pago no mesmo cpf",
+        dispositivoId: DISPOSITIVO_COMPARTILHADO,
+        ipOrigem: "177.92.14.203",
+      }),
+      sessaoContratacao({
+        diasAtras: 1,
+        canal: "site",
+        tipoPlano: "pre-pago",
+        pedido: "preciso contratar outra linha pre-pago, e pra hoje",
+        dispositivoId: DISPOSITIVO_COMPARTILHADO,
+        ipOrigem: "177.92.14.203",
+      }),
+    ],
+  },
+  {
+    nome: "Larissa Couto",
+    tipoCliente: "ativo",
+    cpf: "80122233344",
+    sessoes: [
+      sessaoContratacao({
+        diasAtras: 3,
+        canal: "app",
+        tipoPlano: "pre-pago",
+        pedido: "quero um chip pre-pago novo",
+        dispositivoId: DISPOSITIVO_COMPARTILHADO,
+        ipOrigem: "200.155.31.66",
+      }),
+    ],
+  },
+  {
+    nome: "Thiago Rocha",
+    tipoCliente: "ativo",
+    cpf: "80233344455",
+    sessoes: [
+      sessaoContratacao({
+        diasAtras: 2,
+        canal: "whatsapp",
+        tipoPlano: "pre-pago",
+        pedido: "quero uma linha pre-pago pra usar no trabalho",
+        dispositivoId: DISPOSITIVO_COMPARTILHADO,
+        ipOrigem: "191.252.110.9",
+      }),
+    ],
+  },
+
+  // ---- Fraude: mesma origem de rede (IP) para três CPFs ----------------
+  {
+    nome: "Sandra Melo",
+    tipoCliente: "ativo",
+    cpf: "81044455566",
+    sessoes: [
+      sessaoContratacao({
+        diasAtras: 2,
+        canal: "whatsapp",
+        tipoPlano: "controle",
+        pedido: "quero assinar o plano controle",
+        dispositivoId: "dev-1b8e44d0-android",
+        ipOrigem: IP_COMPARTILHADO,
+      }),
+    ],
+  },
+  {
+    nome: "Vanessa Ribeiro",
+    tipoCliente: "ativo",
+    cpf: "81155566677",
+    sessoes: [
+      {
+        canal: "site",
+        diasAtras: 1,
+        estado: "ENCERRADA",
+        jornadaStatus: "RESOLVIDO",
+        dispositivoId: "dev-c42f9a17-iphone",
+        ipOrigem: IP_COMPARTILHADO,
+        mensagens: [
+          { remetente: "cliente", conteudo: "preciso da segunda via da fatura", minutosDepois: 0, categoria: "atendimento/2via_fatura", tom: "neutro" },
+          {
+            remetente: "vox",
+            conteudo: "A 2ª via de fatura fica disponível no app Claro, no site ou por aqui mesmo pelo Vox. O link enviado tem validade de 7 dias. Precisa de mais alguma coisa?",
+            minutosDepois: 1,
+          },
+        ],
+        nps: [{ alvo: "ia", nota: 9, minutosDepois: 2 }],
+      },
+    ],
+  },
+  {
+    nome: "Wellington Souza",
+    tipoCliente: "ativo",
+    cpf: "81266677788",
+    sessoes: [
+      sessaoContratacao({
+        diasAtras: 0,
+        canal: "site",
+        tipoPlano: "pos-pago",
+        pedido: "quero contratar o pos pago ilimitado",
+        dispositivoId: "dev-9d03b7e5-windows",
+        ipOrigem: IP_COMPARTILHADO,
+      }),
+    ],
+  },
+
+  // ---- Fraude: estilo de escrita muito parecido (Regra C, indício fraco)
+  // Hélio e Otávio têm CPFs, aparelhos e IPs diferentes, mas escrevem do
+  // mesmo jeito (caixa alta, "!!!", mesmo emoji).
+  {
+    nome: "Hélio Santos",
+    tipoCliente: "ativo",
+    cpf: "82077788899",
+    sessoes: [
+      {
+        canal: "site",
+        diasAtras: 3,
+        estado: "ENCERRADA",
+        jornadaStatus: "RESOLVIDO",
+        dispositivoId: "dev-5a6c1e88-android",
+        ipOrigem: "177.37.201.45",
+        mensagens: [
+          {
+            remetente: "cliente",
+            conteudo: "OI!!! 😡 TEM UMA COBRANCA INDEVIDA NA MINHA FATURA!!!",
+            minutosDepois: 0,
+            categoria: "atendimento/cobranca_contestada",
+            tom: "frustracao",
+          },
+          { remetente: "vox", conteudo: "Entendo, vou verificar a cobrança na sua fatura mais recente.", minutosDepois: 1 },
+          {
+            remetente: "cliente",
+            conteudo: "NAO RECONHECO ESSE VALOR!!! 😡😡 QUERO RESOLVER AGORA!!!",
+            minutosDepois: 2,
+            categoria: "atendimento/cobranca_contestada",
+            tom: "frustracao",
+          },
+          { remetente: "cliente", conteudo: "ATENDENTE POR FAVOR!!! 😡", minutosDepois: 3, categoria: "atendimento/atendente_humano", tom: "frustracao" },
+          { remetente: "vox", conteudo: VOX_TRANSFERINDO, minutosDepois: 4 },
+          { remetente: "atendente", conteudo: "Oi Hélio, conferi a fatura e o valor era de um serviço avulso já cancelado. Estornei.", minutosDepois: 14 },
+        ],
+        briefing: {
+          motivo_transbordo: "cliente solicitou atendente humano",
+          tom_emocional: "frustracao",
+          resumo_jornada: 'Cliente Hélio Santos, intenção: atendimento/cobranca_contestada. Última mensagem: "ATENDENTE POR FAVOR!!! 😡".',
+          sugestao_resolucao: "Verificar serviços avulsos cobrados na última fatura.",
+          atendenteId: ATENDENTE_DEMO_NOME,
+          assumidoMinutosDepois: 10,
+          encerradoMinutosDepois: 15,
+        },
+        nps: [{ alvo: "atendente", nota: 7, minutosDepois: 16 }],
+      },
+    ],
+  },
+  {
+    nome: "Otávio Barros",
+    tipoCliente: "ativo",
+    cpf: "82188899900",
+    sessoes: [
+      {
+        canal: "whatsapp",
+        diasAtras: 1,
+        estado: "TRANSBORDO_PENDENTE",
+        jornadaStatus: "AGUARDANDO_TRANSBORDO",
+        dispositivoId: "dev-e17d2b40-iphone",
+        ipOrigem: "201.17.88.130",
+        mensagens: [
+          {
+            remetente: "cliente",
+            conteudo: "OI!!! 😡 QUERO TROCAR DE PLANO AGORA!!!",
+            minutosDepois: 0,
+            categoria: "atendimento/alterar_plano",
+            tom: "frustracao",
+          },
+          { remetente: "vox", conteudo: "Posso te mostrar as opções de planos disponíveis para o seu perfil.", minutosDepois: 1 },
+          {
+            remetente: "cliente",
+            conteudo: "ESSE PLANO NAO SERVE!!! 😡😡 QUERO UPGRADE HOJE!!!",
+            minutosDepois: 2,
+            categoria: "atendimento/alterar_plano",
+            tom: "frustracao",
+          },
+          { remetente: "cliente", conteudo: "ATENDENTE POR FAVOR!!! 😡", minutosDepois: 3, categoria: "atendimento/atendente_humano", tom: "frustracao" },
+          { remetente: "vox", conteudo: VOX_TRANSFERINDO, minutosDepois: 4 },
+        ],
+        briefing: {
+          motivo_transbordo: "cliente solicitou atendente humano",
+          tom_emocional: "frustracao",
+          resumo_jornada: 'Cliente Otávio Barros, intenção: atendimento/alterar_plano. Última mensagem: "ATENDENTE POR FAVOR!!! 😡".',
+          sugestao_resolucao: "Apresentar opções de upgrade compatíveis com o consumo atual.",
+        },
+      },
+    ],
+  },
+
+  // ---- Chamados comuns (sem fraude) -------------------------------------
+  {
+    nome: "Camila Duarte",
+    tipoCliente: "ativo",
+    cpf: "82299900011",
+    sessoes: [
+      {
+        canal: "app",
+        diasAtras: 5,
+        estado: "ENCERRADA",
+        jornadaStatus: "RESOLVIDO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "queria fazer upgrade do meu plano pra um com mais internet", minutosDepois: 0, categoria: "atendimento/alterar_plano", tom: "neutro" },
+          {
+            remetente: "vox",
+            conteudo: "Plano Controle 30GB: 30GB de internet, ligações ilimitadas, WhatsApp e redes sociais sem consumir franquia. Quer que eu já prepare essa mudança?",
+            minutosDepois: 1,
+          },
+        ],
+        nps: [{ alvo: "ia", nota: 9, comentario: "rapido e facil", minutosDepois: 2 }],
+      },
+    ],
+  },
+  {
+    nome: "Eduardo Pires",
+    tipoCliente: "ativo",
+    cpf: "83011223344",
+    sessoes: [
+      {
+        canal: "whatsapp",
+        diasAtras: 0,
+        estado: "TRANSBORDO_PENDENTE",
+        jornadaStatus: "AGUARDANDO_TRANSBORDO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "estou devendo duas faturas em atraso, queria negociar a divida", minutosDepois: 0, categoria: "atendimento/negociar_divida", tom: "frustracao" },
+          {
+            remetente: "vox",
+            conteudo: "Débitos em atraso podem ser parcelados em até 6 vezes sem entrada, ou quitados à vista com desconto. Prefere parcelar ou pagar à vista com desconto?",
+            minutosDepois: 1,
+          },
+          { remetente: "cliente", conteudo: "quero falar com um atendente pra fechar o acordo", minutosDepois: 3, categoria: "atendimento/atendente_humano", tom: "neutro" },
+          { remetente: "vox", conteudo: VOX_TRANSFERINDO, minutosDepois: 4 },
+        ],
+        briefing: {
+          motivo_transbordo: "cliente solicitou atendente humano",
+          tom_emocional: "frustracao",
+          resumo_jornada: 'Cliente Eduardo Pires, intenção: atendimento/negociar_divida. Última mensagem: "quero falar com um atendente pra fechar o acordo".',
+          sugestao_resolucao: "Oferecer parcelamento em até 6x antes da suspensão da linha por atraso.",
+        },
+        nps: [{ alvo: "ia", nota: 6, minutosDepois: 4 }],
+      },
+    ],
+  },
+  {
+    nome: "Gustavo Henrique",
+    tipoCliente: "ativo",
+    cpf: "83122334455",
+    sessoes: [
+      {
+        canal: "whatsapp",
+        diasAtras: 3,
+        estado: "ENCERRADA",
+        jornadaStatus: "RESOLVIDO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "manda a 2 via da minha conta por favor", minutosDepois: 0, categoria: "atendimento/2via_fatura", tom: "neutro" },
+          {
+            remetente: "vox",
+            conteudo: "Sua 2ª via já está disponível. O link enviado tem validade de 7 dias. Precisa de mais alguma coisa?",
+            minutosDepois: 1,
+          },
+        ],
+        nps: [{ alvo: "ia", nota: 10, comentario: "perfeito", minutosDepois: 2 }],
+      },
+    ],
+  },
+  {
+    nome: "Renata Farias",
+    tipoCliente: "ativo",
+    cpf: "83233445566",
+    sessoes: [
+      {
+        canal: "voz",
+        diasAtras: 0,
+        estado: "EM_ATENDIMENTO_HUMANO",
+        jornadaStatus: "EM_ANDAMENTO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "o wifi nao conecta em nenhum aparelho aqui de casa", minutosDepois: 0, categoria: "atendimento/suporte_tecnico", tom: "frustracao" },
+          {
+            remetente: "vox",
+            conteudo: "Quando o Wi-Fi não conecta em nenhum aparelho, o primeiro passo é reiniciar o roteador. Já tentou?",
+            minutosDepois: 1,
+          },
+          { remetente: "cliente", conteudo: "ja reiniciei duas vezes, quero falar com atendente", minutosDepois: 3, categoria: "atendimento/atendente_humano", tom: "frustracao" },
+          { remetente: "vox", conteudo: VOX_TRANSFERINDO, minutosDepois: 4 },
+          { remetente: "atendente", conteudo: "Oi Renata, estou rodando um diagnóstico remoto no seu roteador agora.", minutosDepois: 9 },
+        ],
+        briefing: {
+          motivo_transbordo: "cliente solicitou atendente humano",
+          tom_emocional: "frustracao",
+          resumo_jornada: 'Cliente Renata Farias, intenção: atendimento/suporte_tecnico. Última mensagem: "ja reiniciei duas vezes, quero falar com atendente".',
+          sugestao_resolucao: "Rodar diagnóstico remoto do roteador e verificar instabilidade na região.",
+          atendenteId: ATENDENTE_DEMO_NOME,
+          assumidoMinutosDepois: 8,
+        },
+      },
+    ],
+  },
+  {
+    nome: "Lucas Almeida",
+    tipoCliente: "ativo",
+    cpf: "83344556677",
+    sessoes: [
+      {
+        canal: "site",
+        diasAtras: 0,
+        estado: "TRANSBORDO_PENDENTE",
+        jornadaStatus: "AGUARDANDO_TRANSBORDO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "roubaram meu celular agora, preciso bloquear a linha urgente", minutosDepois: 0, categoria: "atendimento/duvida_geral", tom: "urgencia" },
+          {
+            remetente: "vox",
+            conteudo: "Em caso de perda ou roubo, a linha pode ser bloqueada imediatamente pelo app, site ou central telefônica, evitando uso indevido.",
+            minutosDepois: 1,
+          },
+          { remetente: "cliente", conteudo: "nao tenho o app, o celular foi roubado! preciso de um atendente agora", minutosDepois: 2, categoria: "atendimento/atendente_humano", tom: "urgencia" },
+          { remetente: "vox", conteudo: VOX_TRANSFERINDO, minutosDepois: 3 },
+        ],
+        briefing: {
+          motivo_transbordo: "cliente com urgência declarada (roubo do aparelho)",
+          tom_emocional: "urgencia",
+          resumo_jornada: 'Cliente Lucas Almeida, intenção: atendimento/duvida_geral. Última mensagem: "nao tenho o app, o celular foi roubado! preciso de um atendente agora".',
+          sugestao_resolucao: "Bloquear a linha imediatamente e orientar sobre emissão de novo chip.",
+        },
+      },
+    ],
+  },
+  {
+    nome: "Sônia Batista",
+    tipoCliente: "ativo",
+    cpf: "83455667788",
+    acessibilidade: { linguagem_simplificada: true },
+    sessoes: [
+      {
+        canal: "voz",
+        diasAtras: 2,
+        estado: "ENCERRADA",
+        jornadaStatus: "RESOLVIDO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "minha conta veio mais cara esse mes, queria entender a fatura", minutosDepois: 0, categoria: "atendimento/consulta_fatura", tom: "neutro" },
+          {
+            remetente: "vox",
+            conteudo: "Claro. A sua fatura mostra o valor total, a data de vencimento e o que foi cobrado em cada serviço. Quer que eu explique algum item?",
+            minutosDepois: 1,
+          },
+        ],
+        nps: [{ alvo: "ia", nota: 8, comentario: "explicou com calma", minutosDepois: 3 }],
+      },
+    ],
+  },
+  {
+    nome: "Aline Moura",
+    tipoCliente: "ativo",
+    cpf: "83566778899",
+    sessoes: [
+      {
+        canal: "whatsapp",
+        diasAtras: 4,
+        estado: "ENCERRADA",
+        jornadaStatus: "RESOLVIDO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "quero cancelar essa porcaria de plano, nada funciona", minutosDepois: 0, categoria: "venda/cancelamento", tom: "hostil" },
+          { remetente: "vox", conteudo: VOX_TRANSFERINDO, minutosDepois: 1 },
+          { remetente: "atendente", conteudo: "Oi Aline, sinto muito pela experiência. O cancelamento foi feito sem multa, você estava fora da fidelidade.", minutosDepois: 12 },
+        ],
+        briefing: {
+          motivo_transbordo: "cliente demonstrou comportamento hostil (xingamento/ofensa) na mensagem",
+          tom_emocional: "hostil",
+          resumo_jornada: 'Cliente Aline Moura, intenção: venda/cancelamento. Última mensagem: "quero cancelar essa porcaria de plano, nada funciona".',
+          sugestao_resolucao: "Verificar período de fidelidade antes de processar o cancelamento.",
+          atendenteId: ATENDENTE_DEMO_NOME,
+          assumidoMinutosDepois: 10,
+          encerradoMinutosDepois: 13,
+        },
+        nps: [
+          { alvo: "ia", nota: 1, minutosDepois: 2 },
+          { alvo: "atendente", nota: 4, comentario: "cancelou, mas nao devia ter chegado nesse ponto", minutosDepois: 14 },
+        ],
+      },
+    ],
+  },
+  {
+    nome: "Marina Lopes",
+    tipoCliente: "ativo",
+    cpf: "83677889900",
+    sessoes: [
+      {
+        canal: "app",
+        diasAtras: 0,
+        estado: "TRANSBORDO_PENDENTE",
+        jornadaStatus: "AGUARDANDO_TRANSBORDO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "o tecnico nao veio e eu fiquei a manha inteira esperando", minutosDepois: 0, categoria: "atendimento/reagendar_visita", tom: "frustracao" },
+          {
+            remetente: "vox",
+            conteudo: "Sinto muito. Visitas técnicas podem ser reagendadas informando uma nova data e horário. Qual data e período funcionam melhor pra você?",
+            minutosDepois: 1,
+          },
+          { remetente: "cliente", conteudo: "nao quero remarcar com robo, quero falar com alguem", minutosDepois: 2, categoria: "atendimento/atendente_humano", tom: "frustracao" },
+          { remetente: "vox", conteudo: VOX_TRANSFERINDO, minutosDepois: 3 },
+        ],
+        briefing: {
+          motivo_transbordo: "cliente solicitou atendente humano",
+          tom_emocional: "frustracao",
+          resumo_jornada: 'Cliente Marina Lopes, intenção: atendimento/reagendar_visita. Última mensagem: "nao quero remarcar com robo, quero falar com alguem".',
+          sugestao_resolucao: "Reagendar com prioridade e registrar a visita não realizada.",
+        },
+        nps: [{ alvo: "ia", nota: 3, minutosDepois: 3 }],
+      },
+    ],
+  },
+  {
+    nome: "Felipe Araújo",
+    tipoCliente: "ativo",
+    cpf: "83788990011",
+    sessoes: [
+      {
+        canal: "site",
+        diasAtras: 1,
+        estado: "ENCERRADA",
+        jornadaStatus: "RESOLVIDO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "minha fatura veio errada, cobraram roaming e eu nem viajei", minutosDepois: 0, categoria: "atendimento/cobranca_contestada", tom: "frustracao" },
+          { remetente: "vox", conteudo: VOX_TRANSFERINDO, minutosDepois: 1 },
+          { remetente: "atendente", conteudo: "Oi Felipe, confirmei que o pacote de roaming foi ativado por engano. Estornei o valor.", minutosDepois: 11 },
+        ],
+        briefing: {
+          motivo_transbordo: "cobrança contestada não resolvida automaticamente",
+          tom_emocional: "frustracao",
+          resumo_jornada: 'Cliente Felipe Araújo, intenção: atendimento/cobranca_contestada. Última mensagem: "minha fatura veio errada, cobraram roaming e eu nem viajei".',
+          sugestao_resolucao: "Verificar ativação do pacote de roaming internacional na última fatura.",
+          atendenteId: ATENDENTE_DEMO_NOME,
+          assumidoMinutosDepois: 9,
+          encerradoMinutosDepois: 12,
+        },
+        nps: [
+          { alvo: "ia", nota: 5, minutosDepois: 2 },
+          { alvo: "atendente", nota: 9, comentario: "resolveu rapidinho", minutosDepois: 13 },
+        ],
+      },
+    ],
+  },
+  {
+    nome: "Paulo Cardoso",
+    tipoCliente: "prospeccao",
+    telefone: "21988776655",
+    sessoes: [
+      {
+        canal: "site",
+        diasAtras: 0,
+        estado: "ATIVA",
+        jornadaStatus: "EM_ANDAMENTO",
+        mensagens: [
+          { remetente: "cliente", conteudo: "voces tem plano de internet fibra pra minha casa?", minutosDepois: 0, categoria: "venda/consulta_portfolio", tom: "neutro" },
+          {
+            remetente: "vox",
+            conteudo: "Sobre isso: Plano Internet Fibra 500 Mega: internet residencial via fibra óptica com 500 Mega, Wi-Fi 6 incluso. Quer que eu detalhe outro plano ou já seguimos com esse?",
+            minutosDepois: 1,
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 async function clienteJaExiste(cenario: ClienteSeed): Promise<boolean> {
@@ -673,10 +1214,23 @@ async function criarClienteCenario(cenario: ClienteSeed, canalIdPorNome: Map<str
     const atualizadoEm = maisMinutos(criadoEm, ultimaMensagem?.minutosDepois || 0);
 
     const sessaoRes = await pool.query(
-      `INSERT INTO sessao (cliente_id, canal_origem_id, estado, criado_em, atualizado_em) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [clienteId, canalId, sessao.estado, criadoEm, atualizadoEm]
+      `INSERT INTO sessao (cliente_id, canal_origem_id, estado, criado_em, atualizado_em, dispositivo_id, ip_origem)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [clienteId, canalId, sessao.estado, criadoEm, atualizadoEm, sessao.dispositivoId || null, sessao.ipOrigem || null]
     );
     const sessaoId = sessaoRes.rows[0].id;
+
+    if (sessao.contrato) {
+      // Mesmo formato do protocolo do cold start (VX-AAAAMMDD-...), com a
+      // data da sessão; o contrato reaproveita o protocolo, igual a
+      // routes/contratos.ts.
+      const protocolo = `VX-${criadoEm.toISOString().slice(0, 10).replace(/-/g, "")}-${sessaoId.slice(0, 6).toUpperCase()}`;
+      await pool.query(`UPDATE sessao SET protocolo = $1 WHERE id = $2`, [protocolo, sessaoId]);
+      await pool.query(
+        `INSERT INTO contrato (cliente_id, sessao_id, tipo_plano, protocolo, status, criado_em) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [clienteId, sessaoId, sessao.contrato.tipoPlano, protocolo, sessao.contrato.status || "confirmado", atualizadoEm]
+      );
+    }
 
     const ultimaIntencaoCliente = [...sessao.mensagens].reverse().find((m) => m.remetente === "cliente" && m.categoria);
     await pool.query(
@@ -782,6 +1336,11 @@ async function seedAuditoria() {
 async function main() {
   console.log("[seed] iniciando...");
 
+  // Colunas e tabelas mais novas (sessao.dispositivo_id, contrato...) só
+  // existem depois do ensureSchema — garante mesmo se a CIV nunca subiu
+  // apontando para este banco.
+  await ensureSchema();
+
   for (const c of CANAIS) {
     await pool.query(
       `INSERT INTO canal (nome, tipo_adapter) VALUES ($1, $2) ON CONFLICT (nome) DO NOTHING`,
@@ -831,6 +1390,14 @@ async function main() {
   for (const cenario of CLIENTES_DEMO) {
     await criarClienteCenario(cenario, canalIdPorNome);
   }
+
+  // As Regras B e C da detecção de fraude são incrementais (watermark): só
+  // olham sessões/mensagens mais novas que a última rodada. Os cenários
+  // acima têm datas no passado, então se a CIV já rodou o job neste banco
+  // eles nunca seriam vistos. Zerar o watermark força uma rodada completa
+  // no próximo ciclo do job (deteccaoFraude.ts), que gera os alertas.
+  await pool.query("DELETE FROM fraude_scan_estado");
+  console.log("[seed] watermark da detecção de fraude zerado (alertas aparecem no próximo ciclo do job da CIV)");
 
   await seedAuditoria();
 
